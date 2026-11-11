@@ -114,7 +114,9 @@ const first = createCmd();
 const factory1 = await loadFactory();
 factory1(first.cmd);
 first.hooks[0].onSessionStart({ source: "startup", sessionId: "sess_reload" });
-first.run(`localhost:${new URL(base).port}`);
+const host = new URL(base).host;
+const target = `${new URL(base).protocol}//${host}/agent`;
+first.run(host);
 
 const before = await browserIn.next(
 	(message) => message.t === "sessions" && message.sessions.some((s: any) => s.sessionId === "sess_reload"),
@@ -141,7 +143,7 @@ check(
 	after.sessions.some((s: any) => s.sessionId === "sess_reload" && s.agentId === agentId),
 	agentId,
 );
-check("target persisted in cmd.state", state.get("transport:target") === `ws://localhost:${new URL(base).port}/agent`);
+check("target persisted in cmd.state", state.get("transport:target") === target, String(state.get("transport:target")));
 
 browser.close();
 await wait(100);
