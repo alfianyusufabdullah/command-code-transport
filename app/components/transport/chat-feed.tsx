@@ -19,6 +19,7 @@ import {
 	MessageScrollerProvider,
 	MessageScrollerViewport,
 } from "~/components/ui/message-scroller";
+import { cn } from "~/lib/utils";
 import type { Block } from "~/lib/transport-client";
 
 import { BlockView } from "./block-view";
@@ -97,6 +98,7 @@ export function ChatFeed({
 	eof,
 	busy,
 	hasSession,
+	hasPrompt,
 	onLoadOlder,
 }: {
 	blocks: Record<string, Block>;
@@ -105,6 +107,7 @@ export function ChatFeed({
 	eof: boolean;
 	busy: boolean;
 	hasSession: boolean;
+	hasPrompt: boolean;
 	onLoadOlder: () => void;
 }) {
 	const groups = useMemo(() => groupBlocks(blocks, order), [blocks, order]);
@@ -114,7 +117,12 @@ export function ChatFeed({
 		<MessageScrollerProvider autoScroll>
 			<MessageScroller className="min-h-0 flex-1">
 				<MessageScrollerViewport>
-					<MessageScrollerContent className="mx-auto w-full max-w-3xl gap-6 px-4 py-4 md:px-6">
+					<MessageScrollerContent
+						className={cn(
+							"mx-auto w-full max-w-3xl gap-6 px-4 py-4 md:px-6",
+							hasPrompt && "pb-[52dvh]",
+						)}
+					>
 						{!eof && order.length > 0 ? (
 							<div className="flex justify-center">
 								<Button variant="outline" size="xs" onClick={onLoadOlder} disabled={loading}>

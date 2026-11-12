@@ -2,7 +2,7 @@ import type { Interaction } from "../../workers/protocol";
 import { AppSidebar } from "~/components/transport/app-sidebar";
 import { ChatFeed } from "~/components/transport/chat-feed";
 import { Composer } from "~/components/transport/composer";
-import { InteractionPanel } from "~/components/transport/interaction-panel";
+import { PromptOverlay } from "~/components/transport/prompt-overlay";
 import { TransportHeader } from "~/components/transport/transport-header";
 import { Alert, AlertAction, AlertDescription, AlertTitle } from "~/components/ui/alert";
 import { Button } from "~/components/ui/button";
@@ -54,21 +54,23 @@ export default function Home() {
 					</Alert>
 				) : null}
 
-				<ChatFeed
-					blocks={state.blocks}
-					order={state.order}
-					loading={state.loading}
-					eof={state.eof}
-					busy={Boolean(active?.busy)}
-					hasSession={Boolean(active)}
-					onLoadOlder={loadOlder}
-				/>
-
-				<InteractionPanel
-					interactions={interactions}
-					onPermission={answerPermission}
-					onQuestion={answerQuestion}
-				/>
+				<div className="relative flex min-h-0 flex-1 flex-col">
+					<ChatFeed
+						blocks={state.blocks}
+						order={state.order}
+						loading={state.loading}
+						eof={state.eof}
+						busy={Boolean(active?.busy)}
+						hasSession={Boolean(active)}
+						hasPrompt={interactions.length > 0}
+						onLoadOlder={loadOlder}
+					/>
+					<PromptOverlay
+						interactions={interactions}
+						onPermission={answerPermission}
+						onQuestion={answerQuestion}
+					/>
+				</div>
 
 				<Composer disabled={!active} busy={Boolean(active?.busy)} onSend={sendPrompt} />
 			</SidebarInset>
