@@ -11,6 +11,7 @@ import type {
 	Interaction,
 	SessionInfo,
 	SessionUpdate,
+	SkillInfo,
 	SnapshotUpdate,
 	ToolStatus,
 	UpdateMessage,
@@ -39,6 +40,7 @@ export interface TransportState {
 	blocks: Record<string, Block>;
 	order: string[];
 	interactions: Record<string, Interaction>;
+	skillsByAgent: Record<string, SkillInfo[]>;
 	cursor: string | null;
 	eof: boolean;
 	loading: boolean;
@@ -59,6 +61,7 @@ type Action =
 	| { type: "run_committed"; runId: string }
 	| { type: "interaction"; interaction: Interaction }
 	| { type: "interaction_closed"; id: string }
+	| { type: "skills"; agentId: string; skills: SkillInfo[] }
 	| { type: "notice"; notice: string | null }
 	| { type: "error"; message: string }
 	| { type: "loading"; loading: boolean };
@@ -70,6 +73,7 @@ const initialState: TransportState = {
 	blocks: {},
 	order: [],
 	interactions: {},
+	skillsByAgent: {},
 	cursor: null,
 	eof: false,
 	loading: false,
@@ -251,6 +255,11 @@ function reducer(state: TransportState, action: Action): TransportState {
 			delete interactions[action.id];
 			return { ...state, interactions };
 		}
+		case "skills":
+			return {
+				...state,
+				skillsByAgent: { ...state.skillsByAgent, [action.agentId]: action.skills },
+			};
 	}
 }
 
@@ -428,6 +437,16 @@ export function useTransport() {
 				case "interaction_closed":
 					dispatch({ type: "interaction_closed", id: String(message.id) });
 					return;
+				case "skills": {
+					const agentId = String(message.agentId ?? "");
+					if (!agentId) return;
+					dispatch({
+						type: "skills",
+						agentId,
+						skills: (message.skills ?? []) as SkillInfo[],
+					});
+					return;
+				}
 				case "gap":
 					dispatch({
 						type: "notice",
