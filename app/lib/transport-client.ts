@@ -52,6 +52,7 @@ type Action =
 	| { type: "status"; status: TransportState["status"] }
 	| { type: "sessions"; sessions: SessionInfo[] }
 	| { type: "select"; agentId: string }
+	| { type: "active"; agentId: string }
 	| { type: "history"; page: HistoryPage; refresh: boolean }
 	| { type: "delta"; message: UpdateMessage }
 	| { type: "snapshot"; updates: SnapshotUpdate[] }
@@ -163,6 +164,8 @@ function reducer(state: TransportState, action: Action): TransportState {
 				notice: null,
 				pendingRuns: [],
 			};
+		case "active":
+			return { ...state, activeAgentId: action.agentId };
 		case "loading":
 			return { ...state, loading: action.loading };
 		case "notice":
@@ -341,10 +344,17 @@ export function useTransport() {
 						return;
 					}
 
-					const replacement =
-						sessions.find(
-							(session) => session.sessionId === activeSessionRef.current,
-						) ?? sessions[0];
+					const sameSession = sessions.find(
+						(session) => session.sessionId === activeSessionRef.current,
+					);
+					if (sameSession) {
+						activeRef.current = sameSession.agentId;
+						activeSessionRef.current = sameSession.sessionId;
+						dispatch({ type: "active", agentId: sameSession.agentId });
+						return;
+					}
+
+					const replacement = sessions[0];
 					activeRef.current = replacement.agentId;
 					activeSessionRef.current = replacement.sessionId;
 					dispatch({ type: "select", agentId: replacement.agentId });
