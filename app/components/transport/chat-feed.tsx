@@ -55,8 +55,9 @@ function MessageGroupView({
 	live: boolean;
 }) {
 	if (group.kind === "user") {
+		const live = group.blocks[0]?.key.startsWith("run:") ?? false;
 		return (
-			<MessageScrollerItem messageId={group.id} scrollAnchor>
+			<MessageScrollerItem messageId={group.id} scrollAnchor={live}>
 				<Message align="end">
 					<MessageContent>
 						{group.blocks.map((block) => (
