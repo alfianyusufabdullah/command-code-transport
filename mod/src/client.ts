@@ -681,10 +681,14 @@ export class TransportClient {
 			if (typeof data === "string") this.handleRelayMessage(data);
 		});
 
-		ws.addEventListener("close", () => {
+		ws.addEventListener("close", (event) => {
 			if (this.connectionId !== generation) return;
 			this.connecting = false;
 			if (this.socket === ws) this.socket = null;
+			if (event.code === 4001) {
+				this.stopped = true;
+				return;
+			}
 			if (!this.stopped) this.scheduleReconnect();
 		});
 
