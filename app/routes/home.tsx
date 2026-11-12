@@ -31,6 +31,7 @@ export default function Home() {
 	const interactions = Object.values(state.interactions).filter(
 		(interaction: Interaction) => interaction.agentId === state.activeAgentId,
 	);
+	const skills = active ? (state.skillsByAgent[active.agentId] ?? []) : [];
 
 	return (
 		<SidebarProvider className="h-dvh overflow-hidden">
@@ -74,7 +75,12 @@ export default function Home() {
 					/>
 				</div>
 
-				<Composer disabled={!active} busy={Boolean(active?.busy)} onSend={sendPrompt} />
+				<Composer
+					disabled={!active}
+					busy={Boolean(active?.busy)}
+					skills={skills}
+					onSend={sendPrompt}
+				/>
 			</SidebarInset>
 		</SidebarProvider>
 	);
