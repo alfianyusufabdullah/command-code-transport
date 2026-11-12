@@ -27,6 +27,15 @@ export function readString(
 	return undefined;
 }
 
+export function normalizeTarget(value: string): string | null {
+	try {
+		const url = new URL(value);
+		return parseHost(url.host);
+	} catch {
+		return parseHost(value);
+	}
+}
+
 export function parseHost(raw: string): string | null {
 	const value = raw.trim();
 	if (!value) return null;
@@ -38,9 +47,16 @@ export function parseHost(raw: string): string | null {
 	} catch {
 		return null;
 	}
-	const local = url.hostname === "localhost" || url.hostname === "127.0.0.1";
-	const secure = local && !explicit ? false : url.protocol === "wss:" || url.protocol === "https:";
+	const typoHosts: Record<string, string> = {
+		locahost: "localhost",
+		localhsot: "localhost",
+		localhos: "localhost",
+	};
+	const hostname = typoHosts[url.hostname.toLowerCase()] ?? url.hostname;
+	const local = hostname === "localhost" || hostname === "127.0.0.1";
+	const secure = local ? false : url.protocol === "wss:" || url.protocol === "https:";
 	if (!secure && !local) return null;
 	const protocol = secure ? "wss" : "ws";
-	return `${protocol}://${url.host}/agent`;
+	const host = url.port ? `${hostname}:${url.port}` : hostname;
+	return `${protocol}://${host}/agent`;
 }

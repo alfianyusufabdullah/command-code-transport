@@ -27,7 +27,7 @@ import type {
 	ToolCallInput,
 	ToolCallResult,
 } from "./types";
-import { randomId, truncate } from "./util";
+import { normalizeTarget, randomId, truncate } from "./util";
 
 const PROTOCOL_VERSION = 1;
 const INTERACTION_TIMEOUT_MS = Number(process.env.TRANSPORT_INTERACTION_TIMEOUT_MS ?? 60000);
@@ -65,6 +65,7 @@ function readAnswerLabel(answer: unknown): string | undefined {
 export class TransportClient {
 	private socket: WebSocket | null = null;
 	private target: string | null = null;
+	private connectionId = 0;
 	private connecting = false;
 	private retry = 0;
 	private sessionId = "";
@@ -96,15 +97,25 @@ export class TransportClient {
 
 	start(target: string): void {
 		this.stopped = false;
-		this.target = target;
+		this.target = normalizeTarget(target) ?? target;
 		this.retry = 0;
 		this.outbox = [];
 		this.dropped = 0;
+		this.browsers = 0;
+		if (this.reconnectTimer) {
+			clearTimeout(this.reconnectTimer);
+			this.reconnectTimer = null;
+		}
+		for (const entry of [...this.pending.values()]) {
+			entry.finish(null, "superseded");
+		}
+		this.planPending = null;
 		try {
 			this.socket?.close();
 		} catch {
-			this.socket = null;
+			/* already closed */
 		}
+		this.socket = null;
 		this.connecting = false;
 		this.connect();
 	}
@@ -113,6 +124,18 @@ export class TransportClient {
 		if (!next || next === this.sessionId) return;
 		this.sessionId = next;
 		this.sendHello();
+	}
+
+	ensureTarget(target: string): void {
+		const normalized = normalizeTarget(target) ?? target;
+		if (
+			this.target === normalized &&
+			this.socket &&
+			(this.socket.readyState === 0 || this.socket.readyState === 1)
+		) {
+			return;
+		}
+		this.start(normalized);
 	}
 
 	shutdown(): void {
@@ -623,8 +646,17 @@ export class TransportClient {
 			return;
 		}
 		this.socket = ws;
+		const generation = ++this.connectionId;
 
 		ws.addEventListener("open", () => {
+			if (this.connectionId !== generation) {
+				try {
+					ws.close();
+				} catch {
+					/* already closed */
+				}
+				return;
+			}
 			this.connecting = false;
 			this.retry = 0;
 			this.sendHello();
@@ -643,17 +675,20 @@ export class TransportClient {
 		});
 
 		ws.addEventListener("message", (event) => {
+			if (this.connectionId !== generation) return;
 			const data = (event as MessageEvent).data;
 			if (typeof data === "string") this.handleRelayMessage(data);
 		});
 
 		ws.addEventListener("close", () => {
+			if (this.connectionId !== generation) return;
 			this.connecting = false;
 			if (this.socket === ws) this.socket = null;
 			if (!this.stopped) this.scheduleReconnect();
 		});
 
 		ws.addEventListener("error", () => {
+			if (this.connectionId !== generation) return;
 			try {
 				ws.close();
 			} catch {

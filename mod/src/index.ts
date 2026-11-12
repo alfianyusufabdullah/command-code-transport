@@ -1,6 +1,6 @@
 import { TransportClient } from "./client";
 import type { ModApi } from "./types";
-import { parseHost, randomId } from "./util";
+import { normalizeTarget, parseHost, randomId } from "./util";
 
 const TARGET_KEY = "transport:target";
 const AGENT_KEY = "transport:agentId";
@@ -10,8 +10,12 @@ export default function transport(cmd: ModApi): void {
 	cmd.state?.set(AGENT_KEY, agentId);
 
 	const client = new TransportClient(cmd, agentId);
-	const restored = cmd.state?.get<string>(TARGET_KEY);
-	if (restored) client.start(restored);
+	const stored = cmd.state?.get<string>(TARGET_KEY);
+	const restored = stored ? normalizeTarget(stored) : null;
+	if (restored) {
+		if (restored !== stored) cmd.state?.set(TARGET_KEY, restored);
+		client.start(restored);
+	}
 
 	cmd.addCommand({
 		name: "transport",
@@ -31,7 +35,11 @@ export default function transport(cmd: ModApi): void {
 	});
 
 	cmd.hooks({
-		onSessionStart: ({ sessionId }) => client.setSessionId(sessionId),
+		onSessionStart: ({ sessionId }) => {
+			client.setSessionId(sessionId);
+			const stored = cmd.state?.get<string>(TARGET_KEY);
+			if (stored) client.ensureTarget(stored);
+		},
 		onSessionEnd: ({ reason }) => {
 			if (reason === "shutdown") client.shutdown();
 			else if (reason === "reload") client.disconnect();
