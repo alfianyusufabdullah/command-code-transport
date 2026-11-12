@@ -40,25 +40,36 @@ export function PermissionConfirmation({
 				</Badge>
 			}
 			footer={
-				<>
-					<Button
-						variant="ghost"
-						size="sm"
-						onClick={() => onAnswer(interaction.id, "deny")}
-					>
-						<X />
-						Deny
-					</Button>
-					<Button size="sm" onClick={() => onAnswer(interaction.id, "allow")}>
-						<Check />
-						Allow
-					</Button>
-				</>
+				interaction.tui ? (
+					<Badge variant="outline">answer in terminal</Badge>
+				) : (
+					<>
+						<Button
+							variant="ghost"
+							size="sm"
+							onClick={() => onAnswer(interaction.id, "deny")}
+						>
+							<X />
+							Deny
+						</Button>
+						<Button size="sm" onClick={() => onAnswer(interaction.id, "allow")}>
+							<Check />
+							Allow
+						</Button>
+					</>
+				)
 			}
 		>
 			{interaction.description ? (
 				<p className="text-sm leading-relaxed text-foreground/90">
 					{interaction.description}
+				</p>
+			) : null}
+
+			{interaction.tui ? (
+				<p className="text-xs text-muted-foreground">
+					This prompt is open in the terminal. Answer it there; this card closes
+					automatically.
 				</p>
 			) : null}
 

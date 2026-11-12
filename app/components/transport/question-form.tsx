@@ -56,9 +56,19 @@ export function QuestionForm({
 				</Badge>
 			}
 		>
-			<Questionnaire
-				items={items}
-				onSubmit={(event) => {
+			{interaction.tui ? (
+				<p className="text-xs text-muted-foreground">
+					This question is open in the terminal. Answer it there; this card closes
+					automatically.
+				</p>
+			) : null}
+			<fieldset
+				disabled={interaction.tui}
+				className={interaction.tui ? "min-w-0 opacity-60" : "min-w-0"}
+			>
+				<Questionnaire
+					items={items}
+					onSubmit={(event) => {
 					event.preventDefault();
 					const data = new FormData(event.currentTarget);
 					const answers: { questionIndex: number; selectedOptions: string[] }[] = [];
@@ -100,9 +110,12 @@ export function QuestionForm({
 					<QuestionnaireNext>Next</QuestionnaireNext>
 					<QuestionnaireSubmit>{isPlan ? "Send answer" : "Send answers"}</QuestionnaireSubmit>
 				</QuestionnaireActions>
-			</Questionnaire>
+				</Questionnaire>
+			</fieldset>
 			<p className="text-[11px] text-muted-foreground">
-				Answer here, or let the terminal handle it after the timeout.
+				{interaction.tui
+					? "This card closes when the terminal prompt is answered."
+					: "Answer here, or let the terminal handle it after the timeout."}
 			</p>
 		</PromptShell>
 	);

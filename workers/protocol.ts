@@ -187,6 +187,7 @@ export interface PermissionInteraction {
 	input: unknown;
 	description?: string;
 	safety: boolean;
+	tui?: boolean;
 }
 
 export interface QuestionOption {
@@ -208,6 +209,7 @@ export interface QuestionInteraction {
 	id: string;
 	kind: "question";
 	questions: Question[];
+	tui?: boolean;
 }
 
 export type Interaction = PermissionInteraction | QuestionInteraction;
