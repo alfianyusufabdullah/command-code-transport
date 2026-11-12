@@ -5,6 +5,7 @@ interface AgentRecord {
 	socket: WebSocket;
 	info: SessionInfo;
 	registeredAt: number;
+	pending?: Record<string, unknown>;
 }
 
 function parse(raw: unknown): Record<string, unknown> | null {
@@ -55,6 +56,9 @@ export class TransportDurableObject implements DurableObject {
 		socket.addEventListener("close", () => this.dropBrowser(socket));
 		socket.addEventListener("error", () => this.dropBrowser(socket));
 		this.send(socket, { t: "sessions", sessions: this.sessionList() });
+		for (const record of this.agents.values()) {
+			if (record.pending) this.send(socket, record.pending);
+		}
 		this.sendPresence();
 	}
 
@@ -93,6 +97,7 @@ export class TransportDurableObject implements DurableObject {
 			const record = this.agents.get(agentId);
 			if (record && typeof message.id === "string") {
 				record.info.pending = message.id;
+				record.pending = message;
 				this.broadcast({ t: "sessions", sessions: this.sessionList() });
 			}
 		}
@@ -101,6 +106,7 @@ export class TransportDurableObject implements DurableObject {
 			const record = this.agents.get(agentId);
 			if (record && record.info.pending === message.id) {
 				delete record.info.pending;
+				delete record.pending;
 				this.broadcast({ t: "sessions", sessions: this.sessionList() });
 			}
 		}
