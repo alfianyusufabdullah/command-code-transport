@@ -376,7 +376,7 @@ export function useTransport() {
 				case "gap":
 					dispatch({
 						type: "notice",
-						notice: `${message.dropped} event terlewat, memuat ulang history.`,
+						notice: `${message.dropped} events were missed, reloading history.`,
 					});
 					refresh();
 					return;

@@ -50,11 +50,11 @@ export function AppSidebar({
 						<SidebarMenu>
 							{sessions.length === 0 ? (
 								<p className="px-2 py-1 text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">
-									Belum ada sesi. Jalankan{" "}
+									No sessions yet. Run{" "}
 									<code className="rounded bg-muted px-1 py-0.5 text-[10px]">
 										/transport &lt;host&gt;
 									</code>{" "}
-									di Command Code.
+									in Command Code.
 								</p>
 							) : (
 								sessions.map((session) => (

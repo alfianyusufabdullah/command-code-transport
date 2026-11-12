@@ -139,11 +139,11 @@ export function ChatFeed({
 										<EmptyMedia variant="icon">
 											<MessageCircleDashed />
 										</EmptyMedia>
-										<EmptyTitle>{hasSession ? "No history yet" : "Pilih sesi"}</EmptyTitle>
+										<EmptyTitle>{hasSession ? "No history yet" : "Select a session"}</EmptyTitle>
 										<EmptyDescription>
 											{hasSession
-												? "Turn pertama akan muncul di sini saat agent mulai bekerja."
-												: "Pilih sesi di sidebar, atau jalankan /transport <host> di Command Code."}
+												? "The first turn will appear here once the agent starts working."
+												: "Select a session in the sidebar, or run /transport <host> in Command Code."}
 										</EmptyDescription>
 									</EmptyHeader>
 								</Empty>

@@ -53,10 +53,10 @@ export function Composer({
 						rows={1}
 						placeholder={
 							busy
-								? "Agent sedang bekerja…"
+								? "Agent is working…"
 								: disabled
-									? "Pilih sesi dulu"
-									: "Tanya Command Code…"
+									? "Select a session first"
+									: "Ask Command Code…"
 						}
 						aria-label="Message"
 						disabled={blocked}
@@ -65,8 +65,8 @@ export function Composer({
 					<div className="flex items-center justify-between gap-2 px-3 pb-2">
 						<span className="px-1 text-[10px] text-muted-foreground">
 							{busy
-								? "Menunggu agent selesai"
-								: "Enter kirim · Shift+Enter baris baru"}
+								? "Waiting for the agent to finish"
+								: "Enter to send · Shift+Enter for a new line"}
 						</span>
 						<Button
 							type="submit"

@@ -24,7 +24,7 @@ export function TransportHeader({
 					{session ? session.name || session.sessionId : "no session"}
 				</div>
 				<div className="truncate text-[11px] text-muted-foreground">
-					{session ? `${session.model || "no model"} · ${session.cwd}` : "pilih sesi di sidebar"}
+					{session ? `${session.model || "no model"} · ${session.cwd}` : "select a session in the sidebar"}
 				</div>
 			</div>
 			<div className="ml-auto flex items-center gap-2">
