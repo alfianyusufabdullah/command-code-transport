@@ -1,6 +1,13 @@
-import { appendFileSync } from "node:fs";
+import {
+	appendFileSync,
+	existsSync,
+	mkdirSync,
+	readFileSync,
+	unlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 
 import { planFromTodo, toContent, toolDiff, toolKind, toolLocations, toolTitle } from "./acp";
 import { formatAnswers, normalizeQuestions } from "./format";
@@ -82,6 +89,7 @@ export class TransportClient {
 
 	private planPending: { id: string; closed: boolean } | null = null;
 	private permissionPending: { toolName: string; closed: boolean } | null = null;
+	private mirrors = new Map<string, { toolName: string }>();
 
 	private runId = "";
 	private skills: SkillInfo[] | null = null;
@@ -143,6 +151,7 @@ export class TransportClient {
 	}
 
 	shutdown(): void {
+		this.clearPending();
 		this.rawSend({ t: "bye", agentId: this.agentId });
 		this.disconnect();
 	}
@@ -274,6 +283,9 @@ export class TransportClient {
 		if (this.permissionPending && event.toolName === this.permissionPending.toolName) {
 			this.clearPermissionPending();
 		}
+		if (typeof event.toolName === "string" && event.toolName !== "ask_user_question") {
+			this.closeMirrors(event.toolName);
+		}
 		const toolCallId = typeof event.toolCallId === "string" ? event.toolCallId : "";
 		if (!toolCallId) return;
 		this.updateTool(`run:${this.runId}:t:${toolCallId}`, toolCallId, {
@@ -295,6 +307,7 @@ export class TransportClient {
 		if (this.permissionPending && event.toolName === this.permissionPending.toolName) {
 			this.clearPermissionPending();
 		}
+		if (typeof event.toolName === "string") this.closeMirrors(event.toolName);
 		const toolCallId = typeof event.toolCallId === "string" ? event.toolCallId : "";
 		if (!toolCallId) return;
 		if (this.isPlanTool(event.toolName)) this.closePlanPending();
@@ -308,6 +321,7 @@ export class TransportClient {
 		if (this.permissionPending && event.toolName === this.permissionPending.toolName) {
 			this.clearPermissionPending();
 		}
+		if (typeof event.toolName === "string") this.closeMirrors(event.toolName);
 		const toolCallId = typeof event.toolCallId === "string" ? event.toolCallId : "";
 		if (!toolCallId) return;
 		if (this.isPlanTool(event.toolName)) this.closePlanPending();
@@ -358,7 +372,7 @@ export class TransportClient {
 	}
 
 	onPlanRequest(toolName: string): void {
-		if (!this.socket || this.socket.readyState !== 1 || this.browsers === 0) return;
+		if (!this.socket || this.socket.readyState !== 1) return;
 		this.closePlanPending();
 
 		const exiting = toolName === "exit_plan_mode";
@@ -379,22 +393,25 @@ export class TransportClient {
 			`plan_request tool=${toolName} browsers=${this.browsers} readable=${process.stdin.listenerCount("readable")}`,
 		);
 
+		const interaction = {
+			t: "interaction",
+			agentId: this.agentId,
+			id,
+			kind: "question",
+			questions: [
+				{
+					question: exiting ? "Exit plan mode and start implementing?" : "Enter plan mode?",
+					header: "Plan",
+					options,
+					multiSelect: false,
+				},
+			],
+		};
+		this.writePending(interaction);
+
 		void this.waitForAnswer(id, () => {
-			this.rawSend({
-				t: "interaction",
-				agentId: this.agentId,
-				id,
-				kind: "question",
-				questions: [
-					{
-						question: exiting ? "Exit plan mode and start implementing?" : "Enter plan mode?",
-						header: "Plan",
-						options,
-						multiSelect: false,
-					},
-				],
-			});
-		}).then((answer) => {
+			this.rawSend(interaction);
+		}, 0).then((answer) => {
 			if (pending.closed || this.planPending !== pending) return;
 			const selected = readAnswerLabel(answer);
 			if (!selected) {
@@ -444,6 +461,7 @@ export class TransportClient {
 		this.planPending = null;
 		const entry = this.pending.get(pending.id);
 		if (entry) entry.finish(null, "superseded");
+		this.clearPending(pending.id);
 		debug("plan_close");
 	}
 
@@ -665,6 +683,7 @@ export class TransportClient {
 			this.retry = 0;
 			this.sendHello();
 			this.sendSkills();
+			this.sendPending();
 			if (this.dropped > 0) {
 				this.rawSend({ t: "gap", agentId: this.agentId, dropped: this.dropped });
 				this.dropped = 0;
@@ -719,10 +738,9 @@ export class TransportClient {
 
 		if (message.t === "presence") {
 			this.browsers = typeof message.browsers === "number" ? message.browsers : 0;
-			if (this.browsers === 0) {
-				for (const entry of this.pending.values()) entry.scheduleDisconnect();
-			} else {
+			if (this.browsers > 0) {
 				this.sendSkills();
+				this.sendPending();
 			}
 			return;
 		}
@@ -834,6 +852,85 @@ export class TransportClient {
 				});
 			}
 		}
+
+		this.sendPending();
+	}
+
+	private pendingPath(): string | null {
+		if (!this.sessionId) return null;
+		return join(
+			homedir(),
+			".commandcode",
+			"transport",
+			`pending-${this.sessionId}.json`,
+		);
+	}
+
+	private writePending(payload: Record<string, unknown>): void {
+		const file = this.pendingPath();
+		if (!file) return;
+		try {
+			mkdirSync(dirname(file), { recursive: true });
+			writeFileSync(file, JSON.stringify(payload));
+		} catch {
+			/* ignore */
+		}
+	}
+
+	private readPending(): Record<string, unknown> | null {
+		const file = this.pendingPath();
+		if (!file || !existsSync(file)) return null;
+		try {
+			const parsed = JSON.parse(readFileSync(file, "utf8"));
+			return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+				? (parsed as Record<string, unknown>)
+				: null;
+		} catch {
+			return null;
+		}
+	}
+
+	private clearPending(id?: string): void {
+		const file = this.pendingPath();
+		if (!file) return;
+		if (id) {
+			const current = this.readPending();
+			if (current && current.id !== id) return;
+		}
+		try {
+			unlinkSync(file);
+		} catch {
+			/* ignore */
+		}
+	}
+
+	private sendPending(): void {
+		if (!this.socket || this.socket.readyState !== 1) return;
+		const pending = this.readPending();
+		if (!pending) return;
+		this.rawSend({ ...pending, t: "interaction", agentId: this.agentId });
+	}
+
+	private sendMirror(payload: Record<string, unknown>, toolName: string): void {
+		if (!this.socket || this.socket.readyState !== 1) return;
+		const id = String(payload.id ?? "");
+		if (!id) return;
+		this.mirrors.set(id, { toolName });
+		this.rawSend(payload);
+	}
+
+	private closeMirrors(toolName: string): void {
+		for (const [id, mirror] of [...this.mirrors]) {
+			if (toolName && mirror.toolName !== toolName) continue;
+			this.rawSend({
+				t: "interaction_closed",
+				agentId: this.agentId,
+				id,
+				reason: "answered",
+			});
+			this.clearPending(id);
+			this.mirrors.delete(id);
+		}
 	}
 
 	private sendSkills(): void {
@@ -876,7 +973,11 @@ export class TransportClient {
 		});
 	}
 
-	private waitForAnswer(id: string, start: () => void): Promise<unknown> {
+	private waitForAnswer(
+		id: string,
+		start: () => void,
+		timeoutMs = INTERACTION_TIMEOUT_MS,
+	): Promise<unknown> {
 		return new Promise((resolve) => {
 			let settled = false;
 			let grace: ReturnType<typeof setTimeout> | null = null;
@@ -884,14 +985,16 @@ export class TransportClient {
 			const finish = (value: unknown, reason: CloseReason) => {
 				if (settled) return;
 				settled = true;
-				clearTimeout(timer);
+				if (timer) clearTimeout(timer);
 				if (grace) clearTimeout(grace);
 				this.pending.delete(id);
+				this.clearPending(id);
 				this.rawSend({ t: "interaction_closed", agentId: this.agentId, id, reason });
 				resolve(value);
 			};
 
-			const timer = setTimeout(() => finish(null, "timeout"), INTERACTION_TIMEOUT_MS);
+			const timer =
+				timeoutMs > 0 ? setTimeout(() => finish(null, "timeout"), timeoutMs) : null;
 
 			this.pending.set(id, {
 				finish,
@@ -906,19 +1009,27 @@ export class TransportClient {
 	}
 
 	private async askPermission(input: PermissionInput): Promise<"allow" | "deny" | null> {
-		if (!this.socket || this.socket.readyState !== 1 || this.browsers === 0) return null;
+		if (!this.socket || this.socket.readyState !== 1) return null;
 		const id = `perm_${randomId(6)}`;
+		const interaction = {
+			t: "interaction",
+			agentId: this.agentId,
+			id,
+			kind: "permission",
+			toolName: input.toolName,
+			input: input.input,
+			description: input.description,
+			safety: Boolean(input.isSafetyPrompt),
+		};
+		if (this.browsers === 0) {
+			const mirror = { ...interaction, tui: true };
+			this.writePending(mirror);
+			this.sendMirror(mirror, input.toolName);
+			return null;
+		}
 		const answer = await this.waitForAnswer(id, () => {
-			this.rawSend({
-				t: "interaction",
-				agentId: this.agentId,
-				id,
-				kind: "permission",
-				toolName: input.toolName,
-				input: input.input,
-				description: input.description,
-				safety: Boolean(input.isSafetyPrompt),
-			});
+			this.writePending(interaction);
+			this.rawSend(interaction);
 		});
 		if (!answer || typeof answer !== "object") return null;
 		const decision = (answer as Record<string, unknown>).decision;
@@ -926,16 +1037,24 @@ export class TransportClient {
 	}
 
 	private async askQuestion(questions: Question[]): Promise<AnswerEntry[] | null> {
-		if (!this.socket || this.socket.readyState !== 1 || this.browsers === 0) return null;
+		if (!this.socket || this.socket.readyState !== 1) return null;
 		const id = `q_${randomId(6)}`;
+		const interaction = {
+			t: "interaction",
+			agentId: this.agentId,
+			id,
+			kind: "question",
+			questions,
+		};
+		if (this.browsers === 0) {
+			const mirror = { ...interaction, tui: true };
+			this.writePending(mirror);
+			this.sendMirror(mirror, "ask_user_question");
+			return null;
+		}
 		const answer = await this.waitForAnswer(id, () => {
-			this.rawSend({
-				t: "interaction",
-				agentId: this.agentId,
-				id,
-				kind: "question",
-				questions,
-			});
+			this.writePending(interaction);
+			this.rawSend(interaction);
 		});
 		if (!answer || typeof answer !== "object") return null;
 		const raw = (answer as Record<string, unknown>).answers;
