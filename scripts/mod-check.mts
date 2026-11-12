@@ -18,6 +18,12 @@ const sessionId = "sess_int";
 let leafId = "entry_2";
 const tempHome = mkdtempSync(join(tmpdir(), "transport-home-"));
 process.env.HOME = tempHome;
+const skillDir = join(tempHome, ".commandcode", "skills", "check-skill");
+mkdirSync(skillDir, { recursive: true });
+writeFileSync(
+	join(skillDir, "SKILL.md"),
+	"---\nname: check-skill\ndescription: A test skill sent to the web.\nargument-hint: <target>\n---\n\nTest body.\n",
+);
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -124,6 +130,16 @@ check(
 	"hello registers session",
 	findMine(sessions).model === "test-model",
 	JSON.stringify(findMine(sessions)),
+);
+
+const skills = await nextBrowser(
+	(message) => message.t === "skills" && message.agentId === agentId,
+);
+const checkSkill = (skills.skills ?? []).find((skill: any) => skill.name === "check-skill");
+check(
+	"skills list reaches the web",
+	checkSkill?.source === "user" && checkSkill?.argumentHint === "<target>",
+	JSON.stringify(checkSkill),
 );
 
 hooksList[0].transformMessage?.({
