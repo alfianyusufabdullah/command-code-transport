@@ -1,4 +1,11 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+	appendFileSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,6 +15,7 @@ import { createJiti } from "jiti";
 const base = process.env.BASE ?? "ws://localhost:5174";
 const modPath = fileURLToPath(new URL("../dist/transport.ts", import.meta.url));
 const sessionId = "sess_int";
+let leafId = "entry_2";
 const tempHome = mkdtempSync(join(tmpdir(), "transport-home-"));
 process.env.HOME = tempHome;
 
@@ -76,7 +84,7 @@ const cmd = {
 		hooksList.push(hooks);
 		return { dispose() {} };
 	},
-	sessions: { leafId: () => "entry_2" },
+	sessions: { leafId: () => leafId },
 	sendUserMessage(text: string, options?: any) {
 		sent.push({ text, options });
 	},
@@ -234,6 +242,74 @@ check(
 	JSON.stringify(page.updates.map((item: any) => item.key)),
 );
 check("history cursor is first entry", page.cursor === "entry_1", String(page.cursor));
+
+const bigText = "x".repeat(32 * 1024);
+const bigLines: Record<string, unknown>[] = [];
+let parentId = "entry_2";
+let lastBigId = "entry_2";
+for (let index = 0; index < 30; index += 1) {
+	const userId = `big_u_${index}`;
+	const assistantId = `big_a_${index}`;
+	bigLines.push({
+		type: "message",
+		id: userId,
+		parentId,
+		timestamp: new Date(Date.UTC(2026, 0, 1, 0, 0, index * 2)).toISOString(),
+		message: { role: "user", content: [{ type: "text", text: `question ${index}` }] },
+	});
+	bigLines.push({
+		type: "message",
+		id: assistantId,
+		parentId: userId,
+		timestamp: new Date(Date.UTC(2026, 0, 1, 0, 0, index * 2 + 1)).toISOString(),
+		message: {
+			role: "assistant",
+			content: [
+				{ type: "text", text: bigText },
+				{ type: "text", text: bigText },
+			],
+		},
+	});
+	parentId = assistantId;
+	lastBigId = assistantId;
+}
+appendFileSync(file, bigLines.map((line) => JSON.stringify(line)).join("\n") + "\n");
+leafId = lastBigId;
+
+browser.send(
+	JSON.stringify({
+		t: "history",
+		agentId,
+		requestId: "req_big",
+		limit: 20,
+		before: null,
+		chunks: true,
+	}),
+);
+const bigUpdates: any[] = [];
+let bigChunks = 0;
+let bigFinal: any = null;
+for (let index = 0; index < 12; index += 1) {
+	const part = await nextBrowser(
+		(message) =>
+			message.agentId === agentId &&
+			message.requestId === "req_big" &&
+			(message.t === "history_chunk" || message.t === "history_page"),
+	);
+	bigUpdates.push(...part.updates);
+	if (part.t === "history_chunk") bigChunks += 1;
+	if (part.t === "history_page" || part.final) {
+		bigFinal = part;
+		break;
+	}
+}
+check("large history is chunked", bigChunks > 1, String(bigChunks));
+check(
+	"large history keeps the newest update",
+	bigUpdates.at(-1)?.key === `e:${lastBigId}:t1`,
+	String(bigUpdates.at(-1)?.key),
+);
+check("large history is not marked eof", bigFinal?.eof === false, String(bigFinal?.eof));
 
 await wait(300);
 const permissionPromise = hooksList[0].onPermissionRequest({
