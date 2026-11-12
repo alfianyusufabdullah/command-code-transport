@@ -12,6 +12,7 @@
 		"test:relay": "node scripts/relay-check.mjs",
 		"test:mod": "npm run mod:build && node scripts/mod-check.mts && node scripts/reload-check.mts",
 		"test:reload": "npm run mod:build && node scripts/reload-check.mts",
+		"test:switch": "npm run mod:build && node scripts/switch-check.mts",
 		"mod:build": "esbuild mod/src/index.ts --bundle --platform=node --format=esm --target=node22 --outfile=dist/transport.ts --log-level=warning",
 		"mod:install": "node scripts/install-mod.mjs",
 		"mod:update": "npm run mod:build && npm run mod:install"
