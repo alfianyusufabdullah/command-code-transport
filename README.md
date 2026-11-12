@@ -107,7 +107,9 @@ Worker menyajikan UI, `/ws`, dan `/agent`. Durable Object memakai satu instance 
 ## Batasan fase 1
 
 - Tidak ada auth, origin check, atau rate limit.
-- Plan approval, `cmd.ui.confirm` dari mod lain, dan interrupt tetap hanya di terminal.
+- Plan approval dari web memakai injeksi stdin Ink (`unshift` + `readable`): Approve → `Ctrl+A` (exit) atau `1` (enter), Cancel → `Esc`/`2`. Terminal tetap bisa menjawab.
+- Safety permission: Deny langsung dari hook; Allow dari web diteruskan ke prompt TUI dengan injeksi key `1`.
+- `cmd.ui.confirm` dari mod lain dan interrupt tetap hanya di terminal.
 - `ask_user_question` mendukung pilihan dan free text dari web; "discuss instead" tidak.
 - Relay tidak menyimpan apa pun; sesi hilang saat socket putus dan muncul lagi setelah reconnect.
 - Composer nonaktif selama agent busy; pesan baru bisa dikirim setelah run selesai.
