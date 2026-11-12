@@ -1,5 +1,6 @@
 import {
 	appendFileSync,
+	existsSync,
 	mkdirSync,
 	mkdtempSync,
 	readFileSync,
@@ -397,7 +398,49 @@ check(
 );
 
 browser.close();
+await wait(250);
+
+void hooksList[0].beforeToolCall?.({
+	toolName: "exit_plan_mode",
+	input: {},
+});
+await wait(250);
+const pendingFile = join(
+	tempHome,
+	".commandcode",
+	"transport",
+	`pending-${sessionId}.json`,
+);
+check(
+	"pending prompt file is written without a browser",
+	existsSync(pendingFile),
+	pendingFile,
+);
+
+const lateBrowser = new WebSocket(`${base}/ws`);
+const nextLate = collect(lateBrowser);
+await new Promise((resolve, reject) => {
+	lateBrowser.addEventListener("open", () => resolve(null));
+	lateBrowser.addEventListener("error", () => reject(new Error("late browser ws error")));
+});
+await nextLate(
+	(message) => message.t === "sessions" && Boolean(findMine(message)),
+);
+const planInteraction = await nextLate(
+	(message) =>
+		message.t === "interaction" &&
+		message.agentId === agentId &&
+		message.kind === "question" &&
+		message.questions?.[0]?.header === "Plan",
+);
+check(
+	"pending prompt replays to a late browser",
+	planInteraction.questions[0].header === "Plan",
+	JSON.stringify(planInteraction),
+);
+lateBrowser.close();
 await wait(200);
+
 rmSync(tempHome, { recursive: true, force: true });
 
 const failed = results.filter((item) => !item.ok);
