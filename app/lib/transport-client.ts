@@ -251,7 +251,13 @@ function reducer(state: TransportState, action: Action): TransportState {
 }
 
 function socketUrl(): string {
-	const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+	const local =
+		window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+	const protocol = local
+		? "ws:"
+		: window.location.protocol === "https:"
+			? "wss:"
+			: "ws:";
 	return `${protocol}//${window.location.host}/ws`;
 }
 
