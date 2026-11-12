@@ -29,12 +29,12 @@ export function TransportHeader({
 			</div>
 			<div className="ml-auto flex items-center gap-2">
 				{session?.busy ? (
-					<Badge variant="outline" className="border-sky-500/40 text-sky-300">
+					<Badge variant="outline" className="border-sky-500/40 text-sky-700 dark:text-sky-300">
 						running
 					</Badge>
 				) : null}
 				{session?.pending ? (
-					<Badge variant="outline" className="border-amber-500/40 text-amber-300">
+					<Badge variant="outline" className="border-amber-500/40 text-amber-700 dark:text-amber-300">
 						waiting
 					</Badge>
 				) : null}

@@ -1,5 +1,6 @@
-import { ChevronRight, ShieldAlert } from "lucide-react";
+import { Check, ChevronRight, ShieldAlert, X } from "lucide-react";
 
+import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { CodeBlock, CodeBlockContent } from "~/components/ui/code-block";
 import {
@@ -7,15 +8,9 @@ import {
 	CollapsibleContent,
 	CollapsibleTrigger,
 } from "~/components/ui/collapsible";
-import {
-	Item,
-	ItemActions,
-	ItemContent,
-	ItemDescription,
-	ItemMedia,
-	ItemTitle,
-} from "~/components/ui/item";
 import type { PermissionInteraction } from "../../../workers/protocol";
+
+import { PromptShell } from "./prompt-shell";
 
 export function PermissionConfirmation({
 	interaction,
@@ -27,58 +22,75 @@ export function PermissionConfirmation({
 	const input = JSON.stringify(interaction.input, null, 2) ?? "";
 
 	return (
-		<Item variant="outline" size="sm" className="border-amber-500/30 bg-amber-500/5">
-			<ItemMedia variant="icon">
-				<ShieldAlert className="text-amber-400" />
-			</ItemMedia>
-			<ItemContent>
-				<ItemTitle>
-					Allow {interaction.toolName}?
-					{interaction.safety ? (
-						<span className="ml-2 rounded bg-destructive/15 px-1.5 py-0.5 text-[10px] font-normal text-destructive">
-							safety
-						</span>
-					) : null}
-				</ItemTitle>
-				{interaction.description ? (
-					<ItemDescription>{interaction.description}</ItemDescription>
-				) : null}
-				<Collapsible>
-					<CollapsibleTrigger asChild>
-						<Button
-							variant="ghost"
-							size="xs"
-							className="group mt-1 h-6 px-0 text-muted-foreground"
-						>
-							<ChevronRight className="size-3 transition-transform group-data-[state=open]:rotate-90" />
-							details
-						</Button>
-					</CollapsibleTrigger>
-					<CollapsibleContent>
-						<CodeBlock size="sm" className="mt-1">
-							<CodeBlockContent wrap className="max-h-48">
-								{input}
-							</CodeBlockContent>
-						</CodeBlock>
-					</CollapsibleContent>
-				</Collapsible>
-			</ItemContent>
-			<ItemActions>
-				<Button
-					variant="destructive"
-					size="sm"
-					onClick={() => onAnswer(interaction.id, "deny")}
+		<PromptShell
+			icon={ShieldAlert}
+			eyebrow={interaction.safety ? "Safety check" : "Permission"}
+			title={`Allow ${interaction.toolName}?`}
+			tone={interaction.safety ? "warn" : "info"}
+			badge={
+				<Badge
+					variant="outline"
+					className={
+						interaction.safety
+							? "border-amber-500/40 text-amber-700 dark:text-amber-300"
+							: "border-sky-500/40 text-sky-700 dark:text-sky-300"
+					}
 				>
-					Deny
-				</Button>
-				{interaction.safety ? (
-					<span className="text-[11px] text-muted-foreground">terminal only</span>
-				) : (
+					{interaction.safety ? "safety" : "tool"}
+				</Badge>
+			}
+			footer={
+				<>
+					<Button
+						variant="ghost"
+						size="sm"
+						onClick={() => onAnswer(interaction.id, "deny")}
+					>
+						<X />
+						Deny
+					</Button>
 					<Button size="sm" onClick={() => onAnswer(interaction.id, "allow")}>
+						<Check />
 						Allow
 					</Button>
-				)}
-			</ItemActions>
-		</Item>
+				</>
+			}
+		>
+			{interaction.description ? (
+				<p className="text-sm leading-relaxed text-foreground/90">
+					{interaction.description}
+				</p>
+			) : null}
+
+			{interaction.safety ? (
+				<div className="flex gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs text-amber-900 dark:text-amber-100/90">
+					<ShieldAlert className="mt-0.5 size-3.5 shrink-0 text-amber-600 dark:text-amber-300" />
+					<span>
+						This action is never auto-approved. Allow will be forwarded to the terminal
+						prompt.
+					</span>
+				</div>
+			) : null}
+
+			<Collapsible>
+				<CollapsibleTrigger asChild>
+					<Button
+						variant="ghost"
+						size="xs"
+						className="group h-6 px-0 text-muted-foreground"
+					>
+						<ChevronRight className="size-3 transition-transform group-data-[state=open]:rotate-90" />
+						details
+					</Button>
+				</CollapsibleTrigger>
+				<CollapsibleContent>
+					<CodeBlock size="sm" className="mt-1">
+						<CodeBlockContent wrap className="max-h-48">
+							{input}
+						</CodeBlockContent>
+					</CodeBlock>
+				</CollapsibleContent>
+			</Collapsible>
+		</PromptShell>
 	);
 }

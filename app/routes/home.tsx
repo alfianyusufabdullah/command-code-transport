@@ -43,9 +43,11 @@ export default function Home() {
 				<TransportHeader session={active} onRefresh={refresh} />
 
 				{state.notice ? (
-					<Alert className="rounded-none border-x-0 border-t-0 border-amber-500/30 bg-amber-500/10 text-amber-200">
-						<AlertTitle>Koneksi</AlertTitle>
-						<AlertDescription className="text-amber-200/80">{state.notice}</AlertDescription>
+					<Alert className="rounded-none border-x-0 border-t-0 border-amber-500/30 bg-amber-500/10 text-amber-900 dark:text-amber-200">
+						<AlertTitle>Connection</AlertTitle>
+						<AlertDescription className="text-amber-800/80 dark:text-amber-200/80">
+							{state.notice}
+						</AlertDescription>
 						<AlertAction>
 							<Button variant="ghost" size="xs" onClick={refresh}>
 								reload

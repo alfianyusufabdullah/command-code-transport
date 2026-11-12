@@ -81,7 +81,7 @@ export function AppSidebar({
 												</span>
 											</span>
 											{session.pending ? (
-												<span className="rounded bg-amber-500/20 px-1 py-0.5 text-[10px] text-amber-300 group-data-[collapsible=icon]:hidden">
+												<span className="rounded bg-amber-500/20 px-1 py-0.5 text-[10px] text-amber-700 dark:text-amber-300 group-data-[collapsible=icon]:hidden">
 													waiting
 												</span>
 											) : null}

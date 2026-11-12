@@ -1,9 +1,11 @@
+import { MessagesSquare, Route } from "lucide-react";
+
+import { Badge } from "~/components/ui/badge";
 import {
 	Questionnaire,
 	QuestionnaireActions,
 	QuestionnaireChoice,
 	QuestionnaireChoices,
-	QuestionnaireDescription,
 	QuestionnaireInput,
 	QuestionnaireItem,
 	QuestionnaireNext,
@@ -13,6 +15,8 @@ import {
 	QuestionnaireTitle,
 } from "~/components/ui/questionnaire";
 import type { QuestionInteraction } from "../../../workers/protocol";
+
+import { PromptShell } from "./prompt-shell";
 
 export function QuestionForm({
 	interaction,
@@ -28,9 +32,30 @@ export function QuestionForm({
 		name: String(index),
 		required: false,
 	}));
+	const isPlan = interaction.questions.some(
+		(question) => question.header.trim().toLowerCase() === "plan",
+	);
+	const first = interaction.questions[0];
 
 	return (
-		<div className="rounded-xl border border-sky-500/30 bg-sky-500/5 p-4">
+		<PromptShell
+			icon={isPlan ? Route : MessagesSquare}
+			eyebrow={isPlan ? "Plan approval" : "Question"}
+			title={isPlan ? "Approve plan?" : first?.header || "Agent needs input"}
+			tone={isPlan ? "warn" : "info"}
+			badge={
+				<Badge
+					variant="outline"
+					className={
+						isPlan
+							? "border-amber-500/40 text-amber-700 dark:text-amber-300"
+							: "border-sky-500/40 text-sky-700 dark:text-sky-300"
+					}
+				>
+					{isPlan ? "plan" : "question"}
+				</Badge>
+			}
+		>
 			<Questionnaire
 				items={items}
 				onSubmit={(event) => {
@@ -54,7 +79,6 @@ export function QuestionForm({
 				{interaction.questions.map((question, index) => (
 					<QuestionnaireItem key={index} name={String(index)} multiple={question.multiSelect}>
 						<QuestionnaireTitle>{question.question}</QuestionnaireTitle>
-						<QuestionnaireDescription>{question.header}</QuestionnaireDescription>
 						<QuestionnaireChoices>
 							{question.options.map((option) => (
 								<QuestionnaireChoice key={option.label} value={option.label}>
@@ -65,8 +89,8 @@ export function QuestionForm({
 								</QuestionnaireChoice>
 							))}
 							<QuestionnaireInput
-								aria-label={`Jawaban lain untuk ${question.header}`}
-								placeholder="Atau tulis jawaban bebas…"
+								aria-label={`Other answer for ${question.header}`}
+								placeholder="Or type a custom answer…"
 							/>
 						</QuestionnaireChoices>
 					</QuestionnaireItem>
@@ -74,9 +98,12 @@ export function QuestionForm({
 				<QuestionnaireActions>
 					<QuestionnaireSkip />
 					<QuestionnaireNext>Next</QuestionnaireNext>
-					<QuestionnaireSubmit>Send answers</QuestionnaireSubmit>
+					<QuestionnaireSubmit>{isPlan ? "Send answer" : "Send answers"}</QuestionnaireSubmit>
 				</QuestionnaireActions>
 			</Questionnaire>
-		</div>
+			<p className="text-[11px] text-muted-foreground">
+				Answer here, or let the terminal handle it after the timeout.
+			</p>
+		</PromptShell>
 	);
 }
