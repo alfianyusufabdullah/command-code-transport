@@ -57,6 +57,13 @@ export interface ModHooks {
 	onSessionEnd?(input: { reason: string }): void;
 }
 
+export interface SkillInfo {
+	name: string;
+	description: string;
+	argumentHint?: string;
+	source: "project" | "user";
+}
+
 export interface ModApi {
 	name: string;
 	cwd: string;

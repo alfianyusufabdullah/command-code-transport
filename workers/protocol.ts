@@ -142,6 +142,19 @@ export interface HistoryPage {
 	uptoSeq: number;
 }
 
+export interface SkillInfo {
+	name: string;
+	description: string;
+	argumentHint?: string;
+	source: "project" | "user";
+}
+
+export interface SkillsMessage {
+	t: "skills";
+	agentId: string;
+	skills: SkillInfo[];
+}
+
 export interface HistoryChunk {
 	t: "history_chunk";
 	agentId: string;
@@ -291,6 +304,7 @@ export type AgentToRelay =
 	| Hello
 	| StateMessage
 	| UpdateMessage
+	| SkillsMessage
 	| HistoryPage
 	| HistoryChunk
 	| ReplayMessage
@@ -315,6 +329,7 @@ export type WebToRelay = PromptMessage | HistoryRequest | AnswerMessage | PingMe
 export type RelayToWeb =
 	| SessionsMessage
 	| UpdateMessage
+	| SkillsMessage
 	| HistoryPage
 	| HistoryChunk
 	| ReplayMessage

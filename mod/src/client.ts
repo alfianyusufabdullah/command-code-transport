@@ -4,6 +4,7 @@ import { basename, join } from "node:path";
 
 import { planFromTodo, toContent, toolDiff, toolKind, toolLocations, toolTitle } from "./acp";
 import { formatAnswers, normalizeQuestions } from "./format";
+import { discoverSkills } from "./skills";
 import {
 	activePath,
 	capUpdates,
@@ -24,6 +25,7 @@ import type {
 	Question,
 	RunBlock,
 	SessionUpdate,
+	SkillInfo,
 	Snapshot,
 	ToolCallInput,
 	ToolCallResult,
@@ -82,6 +84,7 @@ export class TransportClient {
 	private permissionPending: { toolName: string; closed: boolean } | null = null;
 
 	private runId = "";
+	private skills: SkillInfo[] | null = null;
 	private runActive = false;
 	private blockSeq = 0;
 	private userSeq = 0;
@@ -661,6 +664,7 @@ export class TransportClient {
 			this.connecting = false;
 			this.retry = 0;
 			this.sendHello();
+			this.sendSkills();
 			if (this.dropped > 0) {
 				this.rawSend({ t: "gap", agentId: this.agentId, dropped: this.dropped });
 				this.dropped = 0;
@@ -717,6 +721,8 @@ export class TransportClient {
 			this.browsers = typeof message.browsers === "number" ? message.browsers : 0;
 			if (this.browsers === 0) {
 				for (const entry of this.pending.values()) entry.scheduleDisconnect();
+			} else {
+				this.sendSkills();
 			}
 			return;
 		}
@@ -828,6 +834,12 @@ export class TransportClient {
 				});
 			}
 		}
+	}
+
+	private sendSkills(): void {
+		if (!this.socket || this.socket.readyState !== 1) return;
+		if (!this.skills) this.skills = discoverSkills(this.cmd.cwd);
+		this.rawSend({ t: "skills", agentId: this.agentId, skills: this.skills });
 	}
 
 	private sendHistory(
