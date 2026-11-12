@@ -42,6 +42,7 @@ export interface TransportState {
 	eof: boolean;
 	loading: boolean;
 	notice: string | null;
+	pendingRuns: string[];
 }
 
 type RequestKind = "initial" | "older" | "refresh";
@@ -71,6 +72,7 @@ const initialState: TransportState = {
 	eof: false,
 	loading: false,
 	notice: null,
+	pendingRuns: [],
 };
 
 function kindFor(update: SessionUpdate): BlockKind {
@@ -158,6 +160,7 @@ function reducer(state: TransportState, action: Action): TransportState {
 				eof: false,
 				loading: true,
 				notice: null,
+				pendingRuns: [],
 			};
 		case "loading":
 			return { ...state, loading: action.loading };
@@ -166,18 +169,24 @@ function reducer(state: TransportState, action: Action): TransportState {
 		case "error":
 			return { ...state, notice: action.message, loading: false };
 		case "history": {
-			const blocks = { ...state.blocks };
+			const dropPrefixes = action.refresh
+				? state.pendingRuns.map((runId) => `run:${runId}:`)
+				: [];
+			const baseOrder = state.order.filter(
+				(key) => !dropPrefixes.some((prefix) => key.startsWith(prefix)),
+			);
+			const blocks: Record<string, Block> = {};
+			for (const key of baseOrder) {
+				const block = state.blocks[key];
+				if (block) blocks[key] = block;
+			}
 			for (const item of action.page.updates) {
 				blocks[item.key] = snapshotBlock(blocks[item.key], item);
 			}
 			const keys = action.page.updates.map((item) => item.key);
-			let order: string[];
-			if (action.refresh) {
-				const keep = state.order.filter((key) => !keys.includes(key));
-				order = [...keep, ...keys];
-			} else {
-				order = [...new Set([...keys, ...state.order])];
-			}
+			const order = action.refresh
+				? [...baseOrder.filter((key) => !keys.includes(key)), ...keys]
+				: [...new Set([...keys, ...baseOrder])];
 			return {
 				...state,
 				blocks,
@@ -186,6 +195,7 @@ function reducer(state: TransportState, action: Action): TransportState {
 				eof: action.page.eof,
 				loading: false,
 				notice: null,
+				pendingRuns: action.refresh ? [] : state.pendingRuns,
 			};
 		}
 		case "delta": {
@@ -224,16 +234,8 @@ function reducer(state: TransportState, action: Action): TransportState {
 			}
 			return { ...state, blocks, order: [...new Set([...state.order, ...keys])] };
 		}
-		case "run_committed": {
-			const prefix = `run:${action.runId}:`;
-			const order = state.order.filter((key) => !key.startsWith(prefix));
-			const blocks: Record<string, Block> = {};
-			for (const key of order) {
-				const block = state.blocks[key];
-				if (block) blocks[key] = block;
-			}
-			return { ...state, blocks, order };
-		}
+		case "run_committed":
+			return { ...state, pendingRuns: [...state.pendingRuns, action.runId] };
 		case "interaction":
 			return {
 				...state,
