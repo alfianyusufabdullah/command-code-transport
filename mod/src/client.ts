@@ -7,6 +7,7 @@ import { formatAnswers, normalizeQuestions } from "./format";
 import {
 	activePath,
 	capUpdates,
+	chunkUpdates,
 	entriesToUpdates,
 	findSessionFile,
 	groupTurns,
@@ -727,6 +728,7 @@ export class TransportClient {
 				String(message.requestId ?? ""),
 				typeof message.limit === "number" ? message.limit : 20,
 				typeof message.before === "string" ? message.before : null,
+				message.chunks === true,
 			);
 			return;
 		}
@@ -744,7 +746,12 @@ export class TransportClient {
 		}
 	}
 
-	private serveHistory(requestId: string, limit: number, before: string | null): void {
+	private serveHistory(
+		requestId: string,
+		limit: number,
+		before: string | null,
+		chunks: boolean,
+	): void {
 		const empty = () =>
 			this.rawSend({
 				t: "history_page",
@@ -793,24 +800,64 @@ export class TransportClient {
 			return;
 		}
 
-		const updates = capUpdates(entriesToUpdates(page.turns));
-		this.rawSend({
-			t: "history_page",
-			agentId: this.agentId,
-			requestId,
-			updates,
-			cursor: page.cursor,
-			eof: page.eof,
-			uptoSeq: this.seq,
-		});
+		const updates = entriesToUpdates(page.turns);
+		if (!chunks) {
+			this.rawSend({
+				t: "history_page",
+				agentId: this.agentId,
+				requestId,
+				updates: capUpdates(updates),
+				cursor: page.cursor,
+				eof: page.eof,
+				uptoSeq: this.seq,
+			});
+		} else {
+			this.sendHistory(requestId, updates, page.cursor, page.eof);
+		}
 
 		if (this.runActive && this.runOrder.length > 0) {
-			this.rawSend({
-				t: "replay",
-				agentId: this.agentId,
-				updates: this.snapshotForReplay(),
-			});
+			for (const chunk of chunkUpdates(this.snapshotForReplay())) {
+				this.rawSend({
+					t: "replay",
+					agentId: this.agentId,
+					updates: chunk,
+				});
+			}
 		}
+	}
+
+	private sendHistory(
+		requestId: string,
+		updates: Snapshot[],
+		cursor: string | null,
+		eof: boolean,
+	): void {
+		const chunks = chunkUpdates(updates);
+		if (chunks.length <= 1) {
+			this.rawSend({
+				t: "history_page",
+				agentId: this.agentId,
+				requestId,
+				updates: chunks[0] ?? [],
+				cursor,
+				eof,
+				uptoSeq: this.seq,
+			});
+			return;
+		}
+
+		chunks.forEach((chunk, index) => {
+			this.rawSend({
+				t: "history_chunk",
+				agentId: this.agentId,
+				requestId,
+				updates: chunk,
+				cursor,
+				eof,
+				uptoSeq: this.seq,
+				final: index === chunks.length - 1,
+			});
+		});
 	}
 
 	private waitForAnswer(id: string, start: () => void): Promise<unknown> {

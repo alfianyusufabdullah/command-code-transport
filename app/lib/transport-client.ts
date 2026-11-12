@@ -6,6 +6,7 @@ import type {
 	AcpToolCallUpdate,
 	AcpToolContent,
 	DeliverAs,
+	HistoryChunk,
 	HistoryPage,
 	Interaction,
 	SessionInfo,
@@ -272,6 +273,8 @@ export function useTransport() {
 	const timerRef = useRef<number | null>(null);
 	const heartbeatRef = useRef<number | null>(null);
 	const requestSeq = useRef(0);
+	const requestSessions = useRef(new Map<string, string>());
+	const historyBuffers = useRef(new Map<string, SnapshotUpdate[]>());
 
 	useEffect(() => {
 		activeRef.current = state.activeAgentId;
@@ -293,7 +296,8 @@ export function useTransport() {
 			requestSeq.current += 1;
 			const requestId = `${kind}:${requestSeq.current}`;
 			requestKinds.current.set(requestId, kind);
-			send({ t: "history", agentId, requestId, limit: 20, before });
+			requestSessions.current.set(requestId, activeSessionRef.current ?? "");
+			send({ t: "history", agentId, requestId, limit: 20, before, chunks: true });
 		},
 		[send],
 	);
@@ -349,9 +353,50 @@ export function useTransport() {
 				}
 				case "history_page": {
 					const page = message as unknown as HistoryPage;
+					if (requestSessions.current.get(page.requestId) !== activeSessionRef.current) {
+						requestKinds.current.delete(page.requestId);
+						requestSessions.current.delete(page.requestId);
+						historyBuffers.current.delete(page.requestId);
+						return;
+					}
 					const kind = requestKinds.current.get(page.requestId);
 					requestKinds.current.delete(page.requestId);
+					requestSessions.current.delete(page.requestId);
+					historyBuffers.current.delete(page.requestId);
 					dispatch({ type: "history", page, refresh: kind === "refresh" });
+					return;
+				}
+				case "history_chunk": {
+					const chunk = message as unknown as HistoryChunk;
+					if (requestSessions.current.get(chunk.requestId) !== activeSessionRef.current) {
+						requestKinds.current.delete(chunk.requestId);
+						requestSessions.current.delete(chunk.requestId);
+						historyBuffers.current.delete(chunk.requestId);
+						return;
+					}
+					const updates = historyBuffers.current.get(chunk.requestId) ?? [];
+					updates.push(...chunk.updates);
+					if (!chunk.final) {
+						historyBuffers.current.set(chunk.requestId, updates);
+						return;
+					}
+					historyBuffers.current.delete(chunk.requestId);
+					requestSessions.current.delete(chunk.requestId);
+					const kind = requestKinds.current.get(chunk.requestId);
+					requestKinds.current.delete(chunk.requestId);
+					dispatch({
+						type: "history",
+						page: {
+							t: "history_page",
+							agentId: chunk.agentId,
+							requestId: chunk.requestId,
+							updates,
+							cursor: chunk.cursor,
+							eof: chunk.eof,
+							uptoSeq: chunk.uptoSeq,
+						},
+						refresh: kind === "refresh",
+					});
 					return;
 				}
 				case "update":

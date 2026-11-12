@@ -142,6 +142,17 @@ export interface HistoryPage {
 	uptoSeq: number;
 }
 
+export interface HistoryChunk {
+	t: "history_chunk";
+	agentId: string;
+	requestId: string;
+	updates: SnapshotUpdate[];
+	cursor: string | null;
+	eof: boolean;
+	uptoSeq: number;
+	final: boolean;
+}
+
 export interface ReplayMessage {
 	t: "replay";
 	agentId: string;
@@ -235,6 +246,7 @@ export interface HistoryRequest {
 	requestId: string;
 	limit: number;
 	before: string | null;
+	chunks?: boolean;
 }
 
 export interface PermissionAnswer {
@@ -280,6 +292,7 @@ export type AgentToRelay =
 	| StateMessage
 	| UpdateMessage
 	| HistoryPage
+	| HistoryChunk
 	| ReplayMessage
 	| RunCommitted
 	| Interaction
@@ -303,6 +316,7 @@ export type RelayToWeb =
 	| SessionsMessage
 	| UpdateMessage
 	| HistoryPage
+	| HistoryChunk
 	| ReplayMessage
 	| RunCommitted
 	| Interaction

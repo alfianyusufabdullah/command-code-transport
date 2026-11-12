@@ -6,7 +6,8 @@ import { toContent, toolDiff, toolKind, toolLocations, toolTitle } from "./acp";
 import type { Entry, Snapshot } from "./types";
 import { truncate } from "./util";
 
-const PAGE_LIMIT = 1024 * 1024;
+export const HISTORY_CHUNK_LIMIT = 512 * 1024;
+export const LEGACY_PAGE_LIMIT = 1024 * 1024;
 
 export function loadEntries(file: string): Entry[] {
 	const raw = readFileSync(file, "utf8");
@@ -182,16 +183,40 @@ export function entriesToUpdates(turns: Entry[][]): Snapshot[] {
 	return updates;
 }
 
-export function capUpdates(updates: Snapshot[]): Snapshot[] {
+export function capUpdates(
+	updates: Snapshot[],
+	limit = LEGACY_PAGE_LIMIT,
+): Snapshot[] {
 	const capped: Snapshot[] = [];
 	let bytes = 0;
 	for (const item of updates) {
 		const size = JSON.stringify(item).length;
-		if (bytes + size > PAGE_LIMIT && capped.length > 0) break;
+		if (bytes + size > limit && capped.length > 0) break;
 		capped.push(item);
 		bytes += size;
 	}
 	return capped;
+}
+
+export function chunkUpdates(
+	updates: Snapshot[],
+	limit = HISTORY_CHUNK_LIMIT,
+): Snapshot[][] {
+	const chunks: Snapshot[][] = [];
+	let current: Snapshot[] = [];
+	let bytes = 0;
+	for (const item of updates) {
+		const size = JSON.stringify(item).length;
+		if (current.length > 0 && bytes + size > limit) {
+			chunks.push(current);
+			current = [];
+			bytes = 0;
+		}
+		current.push(item);
+		bytes += size;
+	}
+	if (current.length > 0 || chunks.length === 0) chunks.push(current);
+	return chunks;
 }
 
 export function findSessionFile(id: string): string | null {
