@@ -77,6 +77,7 @@ export class TransportClient {
 	private readonly pending = new Map<string, Pending>();
 
 	private planPending: { id: string; closed: boolean } | null = null;
+	private permissionPending: { toolName: string; closed: boolean } | null = null;
 
 	private runId = "";
 	private runActive = false;
@@ -243,6 +244,9 @@ export class TransportClient {
 	}
 
 	onToolRunning(event: Record<string, unknown>): void {
+		if (this.permissionPending && event.toolName === this.permissionPending.toolName) {
+			this.clearPermissionPending();
+		}
 		const toolCallId = typeof event.toolCallId === "string" ? event.toolCallId : "";
 		if (!toolCallId) return;
 		this.updateTool(`run:${this.runId}:t:${toolCallId}`, toolCallId, {
@@ -261,6 +265,9 @@ export class TransportClient {
 	}
 
 	onToolCompleted(event: Record<string, unknown>): void {
+		if (this.permissionPending && event.toolName === this.permissionPending.toolName) {
+			this.clearPermissionPending();
+		}
 		const toolCallId = typeof event.toolCallId === "string" ? event.toolCallId : "";
 		if (!toolCallId) return;
 		if (this.isPlanTool(event.toolName)) this.closePlanPending();
@@ -271,6 +278,9 @@ export class TransportClient {
 	}
 
 	onToolFailed(event: Record<string, unknown>, fallback: string): void {
+		if (this.permissionPending && event.toolName === this.permissionPending.toolName) {
+			this.clearPermissionPending();
+		}
 		const toolCallId = typeof event.toolCallId === "string" ? event.toolCallId : "";
 		if (!toolCallId) return;
 		if (this.isPlanTool(event.toolName)) this.closePlanPending();
@@ -421,9 +431,38 @@ export class TransportClient {
 
 	async answerPermission(input: PermissionInput): Promise<"allow" | "deny" | undefined> {
 		const decision = await this.askPermission(input);
+		debug(
+			`perm_answer tool=${input.toolName} safety=${String(Boolean(input.isSafetyPrompt))} decision=${String(decision)} browsers=${this.browsers}`,
+		);
 		if (decision === "deny") return "deny";
-		if (decision === "allow" && !input.isSafetyPrompt) return "allow";
+		if (decision === "allow") {
+			if (!input.isSafetyPrompt) return "allow";
+			this.schedulePermissionAllow(input.toolName);
+		}
 		return undefined;
+	}
+
+	private schedulePermissionAllow(toolName: string): void {
+		this.clearPermissionPending();
+		const pending = { toolName, closed: false };
+		this.permissionPending = pending;
+		const inject = () => {
+			if (pending.closed) return;
+			debug(`perm_inject tool=${toolName} readable=${process.stdin.listenerCount("readable")}`);
+			this.injectKey("1");
+		};
+		setTimeout(inject, 900);
+		setTimeout(() => {
+			if (!pending.closed) this.injectKey("1");
+		}, 1800);
+		setTimeout(() => {
+			if (this.permissionPending === pending) this.permissionPending = null;
+		}, 3000);
+	}
+
+	private clearPermissionPending(): void {
+		if (this.permissionPending) this.permissionPending.closed = true;
+		this.permissionPending = null;
 	}
 
 	async answerQuestion(input: ToolCallInput): Promise<ToolCallResult | undefined> {
