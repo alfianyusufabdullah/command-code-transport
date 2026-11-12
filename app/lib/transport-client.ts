@@ -337,7 +337,7 @@ export function useTransport() {
 					if (sessions.length === 0) return;
 
 					if (!activeRef.current) {
-						const first = sessions[0];
+						const first = sessions.find((session) => session.pending) ?? sessions[0];
 						activeRef.current = first.agentId;
 						activeSessionRef.current = first.sessionId;
 						dispatch({ type: "select", agentId: first.agentId });
