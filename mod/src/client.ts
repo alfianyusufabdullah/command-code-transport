@@ -1,4 +1,6 @@
-import { basename } from "node:path";
+import { appendFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { basename, join } from "node:path";
 
 import { planFromTodo, toContent, toolDiff, toolKind, toolLocations, toolTitle } from "./acp";
 import { formatAnswers, normalizeQuestions } from "./format";
@@ -37,6 +39,29 @@ function textOf(update: SessionUpdate): string {
 	return content?.type === "text" && typeof content.text === "string" ? content.text : "";
 }
 
+function debug(line: string): void {
+	try {
+		appendFileSync(
+			join(homedir(), ".commandcode", "transport-debug.log"),
+			`${new Date().toISOString()} ${line}\n`,
+		);
+	} catch {
+		/* ignore */
+	}
+}
+
+function readAnswerLabel(answer: unknown): string | undefined {
+	if (!answer || typeof answer !== "object") return undefined;
+	const raw = (answer as Record<string, unknown>).answers;
+	if (!Array.isArray(raw) || raw.length === 0) return undefined;
+	const first = raw[0];
+	if (!first || typeof first !== "object") return undefined;
+	const selected = (first as Record<string, unknown>).selectedOptions;
+	if (!Array.isArray(selected) || selected.length === 0) return undefined;
+	const value = selected[0];
+	return typeof value === "string" ? value : undefined;
+}
+
 export class TransportClient {
 	private socket: WebSocket | null = null;
 	private target: string | null = null;
@@ -50,6 +75,8 @@ export class TransportClient {
 	private dropped = 0;
 	private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 	private readonly pending = new Map<string, Pending>();
+
+	private planPending: { id: string; closed: boolean } | null = null;
 
 	private runId = "";
 	private runActive = false;
@@ -236,6 +263,7 @@ export class TransportClient {
 	onToolCompleted(event: Record<string, unknown>): void {
 		const toolCallId = typeof event.toolCallId === "string" ? event.toolCallId : "";
 		if (!toolCallId) return;
+		if (this.isPlanTool(event.toolName)) this.closePlanPending();
 		this.updateTool(`run:${this.runId}:t:${toolCallId}`, toolCallId, {
 			status: "completed",
 			content: toContent(event.result),
@@ -245,6 +273,7 @@ export class TransportClient {
 	onToolFailed(event: Record<string, unknown>, fallback: string): void {
 		const toolCallId = typeof event.toolCallId === "string" ? event.toolCallId : "";
 		if (!toolCallId) return;
+		if (this.isPlanTool(event.toolName)) this.closePlanPending();
 		const text =
 			typeof event.error === "string"
 				? event.error
@@ -291,6 +320,105 @@ export class TransportClient {
 		this.sendState(false);
 	}
 
+	onPlanRequest(toolName: string): void {
+		if (!this.socket || this.socket.readyState !== 1 || this.browsers === 0) return;
+		this.closePlanPending();
+
+		const exiting = toolName === "exit_plan_mode";
+		const options = exiting
+			? [
+					{ label: "Approve", description: "Exit plan mode and auto-accept edits" },
+					{ label: "Cancel", description: "Stay in plan mode" },
+				]
+			: [
+					{ label: "Approve", description: "Enter plan mode" },
+					{ label: "Cancel", description: "Stay in the current mode" },
+				];
+
+		const id = `plan_${randomId(6)}`;
+		const pending = { id, closed: false };
+		this.planPending = pending;
+		debug(
+			`plan_request tool=${toolName} browsers=${this.browsers} readable=${process.stdin.listenerCount("readable")}`,
+		);
+
+		void this.waitForAnswer(id, () => {
+			this.rawSend({
+				t: "interaction",
+				agentId: this.agentId,
+				id,
+				kind: "question",
+				questions: [
+					{
+						question: exiting ? "Exit plan mode and start implementing?" : "Enter plan mode?",
+						header: "Plan",
+						options,
+						multiSelect: false,
+					},
+				],
+			});
+		}).then((answer) => {
+			if (pending.closed || this.planPending !== pending) return;
+			const selected = readAnswerLabel(answer);
+			if (!selected) {
+				if (this.planPending === pending) this.planPending = null;
+				return;
+			}
+
+			const keys = exiting
+				? selected === "Approve"
+					? "\u0001"
+					: "\u001b"
+				: selected === "Approve"
+					? "1"
+					: "2";
+
+			debug(`plan_answer tool=${toolName} label=${selected}`);
+			const inject = () => {
+				if (pending.closed || this.planPending !== pending) return;
+				debug(
+					`plan_inject keys=${JSON.stringify(keys)} readable=${process.stdin.listenerCount("readable")}`,
+				);
+				this.injectKey(keys);
+			};
+			setTimeout(inject, 800);
+			setTimeout(() => {
+				if (pending.closed || this.planPending !== pending) return;
+				debug("plan_inject_retry");
+				this.injectKey(keys);
+			}, 1700);
+			setTimeout(() => {
+				if (this.planPending === pending) {
+					pending.closed = true;
+					this.planPending = null;
+				}
+			}, 2600);
+		});
+	}
+
+	private isPlanTool(toolName: unknown): boolean {
+		return toolName === "enter_plan_mode" || toolName === "exit_plan_mode";
+	}
+
+	private closePlanPending(): void {
+		const pending = this.planPending;
+		if (!pending) return;
+		pending.closed = true;
+		this.planPending = null;
+		const entry = this.pending.get(pending.id);
+		if (entry) entry.finish(null, "superseded");
+		debug("plan_close");
+	}
+
+	private injectKey(sequence: string): void {
+		try {
+			process.stdin.unshift(Buffer.from(sequence));
+			process.stdin.emit("readable");
+		} catch {
+			/* stdin unavailable */
+		}
+	}
+
 	async answerPermission(input: PermissionInput): Promise<"allow" | "deny" | undefined> {
 		const decision = await this.askPermission(input);
 		if (decision === "deny") return "deny";
@@ -299,6 +427,10 @@ export class TransportClient {
 	}
 
 	async answerQuestion(input: ToolCallInput): Promise<ToolCallResult | undefined> {
+		if (input.toolName === "enter_plan_mode" || input.toolName === "exit_plan_mode") {
+			this.onPlanRequest(input.toolName);
+			return undefined;
+		}
 		if (input.toolName !== "ask_user_question") return undefined;
 		const questions = normalizeQuestions(input.input);
 		if (!questions) return undefined;
