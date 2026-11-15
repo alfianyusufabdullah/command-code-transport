@@ -94,6 +94,10 @@ export interface SnapshotUpdate {
 	update: SessionUpdate;
 }
 
+export type Harness = "commandcode" | "claude-code";
+
+export const HARNESSES: readonly Harness[] = ["commandcode", "claude-code"];
+
 export interface SessionInfo {
 	agentId: string;
 	sessionId: string;
@@ -102,6 +106,8 @@ export interface SessionInfo {
 	model: string;
 	busy: boolean;
 	pending?: string;
+	harness?: Harness;
+	experimental?: boolean;
 }
 
 export interface Hello {
@@ -114,6 +120,8 @@ export interface Hello {
 	model: string;
 	busy: boolean;
 	token?: string;
+	harness?: Harness;
+	experimental?: boolean;
 }
 
 export interface StateMessage {

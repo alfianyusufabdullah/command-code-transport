@@ -1,3 +1,16 @@
+import type { CloseReason } from "../../core";
+
+export type {
+	CloseReason,
+	DiffContentItem,
+	RunBlock,
+	SessionUpdate,
+	SkillInfo,
+	Snapshot,
+	ToolContent,
+	ToolContentItem,
+} from "../../core";
+
 export interface Disposable {
 	dispose(): void;
 }
@@ -57,13 +70,6 @@ export interface ModHooks {
 	onSessionEnd?(input: { reason: string }): void;
 }
 
-export interface SkillInfo {
-	name: string;
-	description: string;
-	argumentHint?: string;
-	source: "project" | "user";
-}
-
 export interface ModApi {
 	name: string;
 	cwd: string;
@@ -90,8 +96,6 @@ export interface ModApi {
 
 export type Role = "user" | "assistant";
 
-export type CloseReason = "answered" | "timeout" | "disconnected" | "superseded";
-
 export interface EntryBlock {
 	type: string;
 	text?: string;
@@ -110,36 +114,6 @@ export interface Entry {
 	timestamp: string;
 	name?: string;
 	message?: { role: Role; content: EntryBlock[]; meta?: { isMeta?: boolean } };
-}
-
-export interface ToolContentItem {
-	type: "content";
-	content: { type: "text"; text: string };
-}
-
-export interface DiffContentItem {
-	type: "diff";
-	path: string;
-	oldText: string | null;
-	newText: string;
-}
-
-export type ToolContent = ToolContentItem | DiffContentItem;
-
-export interface SessionUpdate {
-	sessionUpdate: string;
-	[key: string]: unknown;
-}
-
-export interface Snapshot {
-	key: string;
-	update: SessionUpdate;
-}
-
-export interface RunBlock {
-	key: string;
-	update: SessionUpdate;
-	text: string;
 }
 
 export interface QuestionOption {

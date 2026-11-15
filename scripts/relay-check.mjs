@@ -85,6 +85,11 @@ check(
 	session?.sessionId === "sess_test" && session?.name === "demo",
 	JSON.stringify(session),
 );
+check(
+	"hello without harness defaults to commandcode",
+	session?.harness === "commandcode" && session?.experimental === undefined,
+	JSON.stringify({ harness: session?.harness, experimental: session?.experimental }),
+);
 
 const presence = await agentIn.next((message) => message.t === "presence");
 const initialBrowsers = presence.browsers;
@@ -165,6 +170,35 @@ check(
 agent.close();
 const gone = await observerIn.next((message) => message.t === "sessions" && !mine(message));
 check("agent close removes session", !mine(gone));
+
+const ccAgentId = `${agentId}_cc`;
+const ccAgent = await open(`${base}/agent`);
+const ccIn = collect(ccAgent);
+ccAgent.send(
+	JSON.stringify({
+		t: "hello",
+		v: 1,
+		agentId: ccAgentId,
+		sessionId: "sess_cc",
+		name: "cc",
+		cwd: "/tmp/cc",
+		model: "claude",
+		busy: false,
+		harness: "claude-code",
+		experimental: true,
+	}),
+);
+await ccIn.next((message) => message.t === "hello_ack");
+const ccSessions = await observerIn.next(
+	(message) => message.t === "sessions" && (message.sessions ?? []).some((item) => item.agentId === ccAgentId),
+);
+const ccSession = ccSessions.sessions.find((item) => item.agentId === ccAgentId);
+check(
+	"claude-code hello keeps harness and experimental",
+	ccSession?.harness === "claude-code" && ccSession?.experimental === true,
+	JSON.stringify({ harness: ccSession?.harness, experimental: ccSession?.experimental }),
+);
+ccAgent.close();
 
 observer.close();
 await wait(50);

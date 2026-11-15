@@ -11,11 +11,13 @@ export function Composer({
 	disabled,
 	busy,
 	skills,
+	agentLabel,
 	onSend,
 }: {
 	disabled: boolean;
 	busy: boolean;
 	skills: SkillInfo[];
+	agentLabel: string;
 	onSend: (text: string) => void;
 }) {
 	const [draft, setDraft] = useState("");
@@ -190,7 +192,7 @@ export function Composer({
 								? "Agent is working…"
 								: disabled
 									? "Select a session first"
-									: "Ask Command Code… or type / for skills"
+									: `Ask ${agentLabel}… or type / for skills`
 						}
 						aria-label="Message"
 						disabled={blocked}

@@ -1,6 +1,6 @@
 import { TransportClient } from "./client";
 import type { ModApi } from "./types";
-import { normalizeTarget, parseHost, randomId } from "./util";
+import { normalizeTarget, parseHost, randomId } from "../../core";
 
 const TARGET_KEY = "transport:target";
 const AGENT_KEY = "transport:agentId";

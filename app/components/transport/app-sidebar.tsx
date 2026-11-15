@@ -14,6 +14,8 @@ import {
 import { cn } from "~/lib/utils";
 import type { SessionInfo } from "../../../workers/protocol";
 
+import { HarnessBadge } from "./harness-badge";
+
 export function AppSidebar({
 	sessions,
 	activeAgentId,
@@ -35,7 +37,7 @@ export function AppSidebar({
 							<div className="grid flex-1 text-left leading-tight group-data-[collapsible=icon]:hidden">
 								<span className="truncate text-sm font-medium">transport</span>
 								<span className="truncate text-xs text-muted-foreground">
-									Command Code remote
+									coding agent remote
 								</span>
 							</div>
 						</SidebarMenuButton>
@@ -54,7 +56,7 @@ export function AppSidebar({
 									<code className="rounded bg-muted px-1 py-0.5 text-[10px]">
 										/transport &lt;host&gt;
 									</code>{" "}
-									in Command Code.
+									in Command Code or Claude Code.
 								</p>
 							) : (
 								sessions.map((session) => (
@@ -76,10 +78,18 @@ export function AppSidebar({
 												<span className="truncate text-sm">
 													{session.name || session.sessionId}
 												</span>
-												<span className="truncate text-[10px] font-normal text-muted-foreground">
-													{session.model || "no model"} · {session.cwd}
+												<span className="flex min-w-0 items-center gap-1 text-[10px] font-normal text-muted-foreground">
+													<HarnessBadge session={session} />
+													<span className="truncate">
+														{session.model || "no model"} · {session.cwd}
+													</span>
 												</span>
 											</span>
+											{session.experimental ? (
+												<span className="rounded bg-violet-500/15 px-1 py-0.5 text-[10px] text-violet-700 dark:text-violet-300 group-data-[collapsible=icon]:hidden">
+													experimental
+												</span>
+											) : null}
 											{session.pending ? (
 												<span className="rounded bg-amber-500/20 px-1 py-0.5 text-[10px] text-amber-700 dark:text-amber-300 group-data-[collapsible=icon]:hidden">
 													waiting

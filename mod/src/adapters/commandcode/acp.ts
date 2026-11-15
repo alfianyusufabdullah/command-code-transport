@@ -1,5 +1,5 @@
 import type { DiffContentItem, Snapshot, ToolContent } from "./types";
-import { readString, truncate } from "./util";
+import { readString, truncate } from "../../core";
 
 const kinds: Record<string, string> = {
 	read_file: "read",

@@ -1,5 +1,5 @@
-import type { Hello, SessionInfo } from "./protocol";
-import { PROTOCOL_VERSION } from "./protocol";
+import type { Harness, Hello, SessionInfo } from "./protocol";
+import { HARNESSES, PROTOCOL_VERSION } from "./protocol";
 
 interface AgentRecord {
 	socket: WebSocket;
@@ -191,6 +191,8 @@ export class TransportDurableObject implements DurableObject {
 			cwd: typeof hello.cwd === "string" ? hello.cwd : "",
 			model: typeof hello.model === "string" ? hello.model : "",
 			busy: hello.busy === true,
+			harness: HARNESSES.includes(hello.harness as Harness) ? hello.harness : "commandcode",
+			...(hello.experimental === true ? { experimental: true } : {}),
 		};
 
 		this.agents.set(hello.agentId, { socket, info, registeredAt: Date.now() });
