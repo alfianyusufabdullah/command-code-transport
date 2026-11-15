@@ -528,6 +528,7 @@ export class TransportClient {
 			t: "hello",
 			v: PROTOCOL_VERSION,
 			agentId: this.agentId,
+			harness: "commandcode",
 			sessionId: this.sessionId,
 			name: this.cmd.getSessionName() ?? basename(this.cmd.cwd),
 			cwd: this.cmd.cwd,
