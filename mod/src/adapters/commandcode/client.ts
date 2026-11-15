@@ -14,8 +14,6 @@ import { formatAnswers, normalizeQuestions } from "./format";
 import { discoverSkills } from "./skills";
 import {
 	activePath,
-	capUpdates,
-	chunkUpdates,
 	entriesToUpdates,
 	findSessionFile,
 	groupTurns,
@@ -30,24 +28,24 @@ import type {
 	Pending,
 	PermissionInput,
 	Question,
-	RunBlock,
-	SessionUpdate,
 	SkillInfo,
 	Snapshot,
 	ToolCallInput,
 	ToolCallResult,
 } from "./types";
-import { normalizeTarget, randomId, truncate } from "./util";
+import {
+	PROTOCOL_VERSION,
+	SessionMirror,
+	capUpdates,
+	chunkUpdates,
+	normalizeTarget,
+	randomId,
+	truncate,
+} from "../../core";
 
-const PROTOCOL_VERSION = 1;
 const INTERACTION_TIMEOUT_MS = Number(process.env.TRANSPORT_INTERACTION_TIMEOUT_MS ?? 60000);
 const DISCONNECT_GRACE_MS = 5000;
 const OUTBOX_LIMIT = 1000;
-
-function textOf(update: SessionUpdate): string {
-	const content = update.content as { type?: string; text?: string } | undefined;
-	return content?.type === "text" && typeof content.text === "string" ? content.text : "";
-}
 
 function debug(line: string): void {
 	try {
@@ -79,7 +77,6 @@ export class TransportClient {
 	private connecting = false;
 	private retry = 0;
 	private sessionId = "";
-	private seq = 0;
 	private stopped = false;
 	private browsers = 0;
 	private outbox: Record<string, unknown>[] = [];
@@ -91,21 +88,20 @@ export class TransportClient {
 	private permissionPending: { toolName: string; closed: boolean } | null = null;
 	private mirrors = new Map<string, { toolName: string }>();
 
-	private runId = "";
 	private skills: SkillInfo[] | null = null;
-	private runActive = false;
 	private blockSeq = 0;
 	private userSeq = 0;
 	private pendingUser: string[] = [];
 	private textKey: string | null = null;
 	private thinkKey: string | null = null;
-	private runOrder: string[] = [];
-	private runBlocks = new Map<string, RunBlock>();
+	private readonly mirror: SessionMirror;
 
 	constructor(
 		private readonly cmd: ModApi,
 		private readonly agentId: string = randomId(10),
-	) {}
+	) {
+		this.mirror = new SessionMirror(agentId, (message) => this.send(message));
+	}
 
 	start(target: string): void {
 		this.stopped = false;
@@ -189,13 +185,13 @@ export class TransportClient {
 			}
 		}
 		if (texts.length === 0) return;
-		if (!this.runActive) {
+		if (!this.mirror.runActive) {
 			this.pendingUser.push(...texts);
 			return;
 		}
 		for (const text of texts) {
 			this.userSeq += 1;
-			this.setSnapshot(`run:${this.runId}:user:${this.userSeq}`, {
+			this.mirror.setSnapshot(`run:${this.mirror.runId}:user:${this.userSeq}`, {
 				sessionUpdate: "user_message_chunk",
 				content: { type: "text", text },
 			});
@@ -204,17 +200,14 @@ export class TransportClient {
 
 	onRunStart(event: Record<string, unknown>): void {
 		this.setSessionId(typeof event.sessionId === "string" ? event.sessionId : undefined);
-		this.runId = randomId(8);
-		this.runActive = true;
+		this.mirror.beginRun(randomId(8));
 		this.blockSeq = 0;
 		this.userSeq = 0;
 		this.textKey = null;
 		this.thinkKey = null;
-		this.runOrder = [];
-		this.runBlocks = new Map();
 		for (const text of this.pendingUser) {
 			this.userSeq += 1;
-			this.setSnapshot(`run:${this.runId}:user:${this.userSeq}`, {
+			this.mirror.setSnapshot(`run:${this.mirror.runId}:user:${this.userSeq}`, {
 				sessionUpdate: "user_message_chunk",
 				content: { type: "text", text },
 			});
@@ -230,7 +223,7 @@ export class TransportClient {
 
 	onThinkingStart(): void {
 		this.blockSeq += 1;
-		this.thinkKey = `run:${this.runId}:b${this.blockSeq}`;
+		this.thinkKey = `run:${this.mirror.runId}:b${this.blockSeq}`;
 	}
 
 	onThinkingDelta(event: Record<string, unknown>): void {
@@ -238,9 +231,9 @@ export class TransportClient {
 		if (!delta) return;
 		if (!this.thinkKey) {
 			this.blockSeq += 1;
-			this.thinkKey = `run:${this.runId}:b${this.blockSeq}`;
+			this.thinkKey = `run:${this.mirror.runId}:b${this.blockSeq}`;
 		}
-		this.appendChunk("agent_thought_chunk", this.thinkKey, delta);
+		this.mirror.appendChunk("agent_thought_chunk", this.thinkKey, delta);
 	}
 
 	onThinkingEnd(): void {
@@ -252,9 +245,9 @@ export class TransportClient {
 		if (!delta) return;
 		if (!this.textKey) {
 			this.blockSeq += 1;
-			this.textKey = `run:${this.runId}:b${this.blockSeq}`;
+			this.textKey = `run:${this.mirror.runId}:b${this.blockSeq}`;
 		}
-		this.appendChunk("agent_message_chunk", this.textKey, delta);
+		this.mirror.appendChunk("agent_message_chunk", this.textKey, delta);
 	}
 
 	onToolQueued(event: Record<string, unknown>): void {
@@ -263,7 +256,7 @@ export class TransportClient {
 		this.textKey = null;
 		const name = typeof event.toolName === "string" ? event.toolName : "tool";
 		const input = (event.input ?? {}) as Record<string, unknown>;
-		this.setSnapshot(`run:${this.runId}:t:${toolCallId}`, {
+		this.mirror.setSnapshot(`run:${this.mirror.runId}:t:${toolCallId}`, {
 			sessionUpdate: "tool_call",
 			toolCallId,
 			title: toolTitle(name, input),
@@ -274,8 +267,8 @@ export class TransportClient {
 			locations: toolLocations(name, input),
 		});
 		if (name === "todo_write") {
-			const plan = planFromTodo(this.runId, input);
-			if (plan) this.setSnapshot(plan.key, plan.update);
+			const plan = planFromTodo(this.mirror.runId, input);
+			if (plan) this.mirror.setSnapshot(plan.key, plan.update);
 		}
 	}
 
@@ -288,7 +281,7 @@ export class TransportClient {
 		}
 		const toolCallId = typeof event.toolCallId === "string" ? event.toolCallId : "";
 		if (!toolCallId) return;
-		this.updateTool(`run:${this.runId}:t:${toolCallId}`, toolCallId, {
+		this.mirror.updateTool(`run:${this.mirror.runId}:t:${toolCallId}`, toolCallId, {
 			status: "in_progress",
 			...(typeof event.description === "string" ? { title: event.description } : {}),
 		});
@@ -297,7 +290,7 @@ export class TransportClient {
 	onToolUpdate(event: Record<string, unknown>): void {
 		const toolCallId = typeof event.toolCallId === "string" ? event.toolCallId : "";
 		if (!toolCallId) return;
-		this.updateTool(`run:${this.runId}:t:${toolCallId}`, toolCallId, {
+		this.mirror.updateTool(`run:${this.mirror.runId}:t:${toolCallId}`, toolCallId, {
 			status: "in_progress",
 			content: toContent(event.partial),
 		});
@@ -311,7 +304,7 @@ export class TransportClient {
 		const toolCallId = typeof event.toolCallId === "string" ? event.toolCallId : "";
 		if (!toolCallId) return;
 		if (this.isPlanTool(event.toolName)) this.closePlanPending();
-		this.updateTool(`run:${this.runId}:t:${toolCallId}`, toolCallId, {
+		this.mirror.updateTool(`run:${this.mirror.runId}:t:${toolCallId}`, toolCallId, {
 			status: "completed",
 			content: toContent(event.result),
 		});
@@ -331,41 +324,30 @@ export class TransportClient {
 				: typeof event.hookOutput === "string"
 					? `Blocked by a hook: ${event.hookOutput}`
 					: fallback;
-		this.updateTool(`run:${this.runId}:t:${toolCallId}`, toolCallId, {
+		this.mirror.updateTool(`run:${this.mirror.runId}:t:${toolCallId}`, toolCallId, {
 			status: "failed",
 			content: [{ type: "content", content: { type: "text", text: truncate(text) } }],
 		});
 	}
 
 	onModeChanged(event: Record<string, unknown>): void {
-		this.seq += 1;
-		this.send({
-			t: "update",
-			agentId: this.agentId,
-			seq: this.seq,
-			key: `mode:${randomId(6)}`,
-			update: {
-				sessionUpdate: "current_mode_update",
-				currentModeId: String(event.mode ?? ""),
-			},
+		this.mirror.emit(`mode:${randomId(6)}`, {
+			sessionUpdate: "current_mode_update",
+			currentModeId: String(event.mode ?? ""),
 		});
 	}
 
 	onSessionTitled(event: Record<string, unknown>): void {
-		this.seq += 1;
-		this.send({
-			t: "update",
-			agentId: this.agentId,
-			seq: this.seq,
-			key: "session:title",
-			update: { sessionUpdate: "session_info_update", title: String(event.title ?? "") },
+		this.mirror.emit("session:title", {
+			sessionUpdate: "session_info_update",
+			title: String(event.title ?? ""),
 		});
 	}
 
 	finishRun(): void {
-		if (!this.runActive) return;
-		this.rawSend({ t: "run_committed", agentId: this.agentId, runId: this.runId });
-		this.runActive = false;
+		if (!this.mirror.runActive) return;
+		this.rawSend({ t: "run_committed", agentId: this.agentId, runId: this.mirror.runId });
+		this.mirror.endRun();
 		this.textKey = null;
 		this.thinkKey = null;
 		this.sendState(false);
@@ -568,80 +550,6 @@ export class TransportClient {
 		});
 	}
 
-	private emit(key: string, update: SessionUpdate): void {
-		this.seq += 1;
-		this.send({ t: "update", agentId: this.agentId, seq: this.seq, key, update });
-	}
-
-	private setSnapshot(key: string, update: SessionUpdate): void {
-		const existing = this.runBlocks.get(key);
-		if (existing) {
-			existing.update = update;
-			existing.text = textOf(update);
-		} else {
-			this.runBlocks.set(key, { key, update, text: textOf(update) });
-			this.runOrder.push(key);
-		}
-		this.emit(key, update);
-	}
-
-	private appendChunk(
-		kind: "agent_message_chunk" | "agent_thought_chunk",
-		key: string,
-		delta: string,
-	): void {
-		const existing = this.runBlocks.get(key);
-		if (!existing) {
-			this.runBlocks.set(key, {
-				key,
-				update: { sessionUpdate: kind, content: { type: "text", text: delta } },
-				text: delta,
-			});
-			this.runOrder.push(key);
-		} else {
-			existing.text += delta;
-			existing.update = {
-				sessionUpdate: kind,
-				content: { type: "text", text: existing.text },
-			};
-		}
-		this.seq += 1;
-		this.send({
-			t: "update",
-			agentId: this.agentId,
-			seq: this.seq,
-			key,
-			update: { sessionUpdate: kind, content: { type: "text", text: delta } },
-		});
-	}
-
-	private snapshotForReplay(): Snapshot[] {
-		return this.runOrder
-			.map((key) => this.runBlocks.get(key))
-			.filter((entry): entry is RunBlock => Boolean(entry))
-			.map((entry) => ({ key: entry.key, update: entry.update }));
-	}
-
-	private updateTool(
-		key: string,
-		toolCallId: string,
-		patch: Record<string, unknown>,
-	): void {
-		const existing = this.runBlocks.get(key);
-		const base =
-			existing && existing.update.sessionUpdate === "tool_call"
-				? { ...existing.update }
-				: {
-						sessionUpdate: "tool_call",
-						toolCallId,
-						title: toolCallId,
-						kind: "other",
-						status: "pending",
-					};
-		const merged = { ...base, ...patch, sessionUpdate: "tool_call" } as SessionUpdate;
-		this.setSnapshot(key, merged);
-	}
-
 	private scheduleReconnect(): void {
 		if (this.stopped) return;
 		if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
@@ -689,11 +597,11 @@ export class TransportClient {
 				this.dropped = 0;
 			}
 			this.flushOutbox();
-			if (this.runActive) {
+			if (this.mirror.runActive) {
 				this.rawSend({
 					t: "replay",
 					agentId: this.agentId,
-					updates: this.snapshotForReplay(),
+					updates: this.mirror.snapshot(),
 				});
 			}
 		});
@@ -788,7 +696,7 @@ export class TransportClient {
 				updates: [],
 				cursor: null,
 				eof: true,
-				uptoSeq: this.seq,
+				uptoSeq: this.mirror.seq,
 			});
 
 		if (!this.sessionId) return empty();
@@ -837,14 +745,14 @@ export class TransportClient {
 				updates: capUpdates(updates),
 				cursor: page.cursor,
 				eof: page.eof,
-				uptoSeq: this.seq,
+				uptoSeq: this.mirror.seq,
 			});
 		} else {
 			this.sendHistory(requestId, updates, page.cursor, page.eof);
 		}
 
-		if (this.runActive && this.runOrder.length > 0) {
-			for (const chunk of chunkUpdates(this.snapshotForReplay())) {
+		if (this.mirror.runActive && this.mirror.hasBlocks) {
+			for (const chunk of chunkUpdates(this.mirror.snapshot())) {
 				this.rawSend({
 					t: "replay",
 					agentId: this.agentId,
@@ -954,7 +862,7 @@ export class TransportClient {
 				updates: chunks[0] ?? [],
 				cursor,
 				eof,
-				uptoSeq: this.seq,
+				uptoSeq: this.mirror.seq,
 			});
 			return;
 		}
@@ -967,7 +875,7 @@ export class TransportClient {
 				updates: chunk,
 				cursor,
 				eof,
-				uptoSeq: this.seq,
+				uptoSeq: this.mirror.seq,
 				final: index === chunks.length - 1,
 			});
 		});
