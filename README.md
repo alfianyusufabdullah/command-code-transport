@@ -28,6 +28,7 @@ Transport is a Command Code mod and a Cloudflare relay that mirror a running `cm
 - [Architecture](#-architecture)
 - [Quick start](#-quick-start)
 - [Using the mod](#-using-the-mod)
+- [Claude Code (experimental)](#-claude-code-experimental)
 - [Web UI](#-web-ui)
 - [Development](#-development)
 - [Testing](#-testing)
@@ -65,7 +66,9 @@ The system has three layers:
 
 | Layer | Path | Responsibility |
 |---|---|---|
-| **Mod** | `mod/src/` | Hooks into `cmd`, streams events, reads JSONL v3 history, injects approvals into the TUI |
+| **Core** | `mod/src/core/` | Harness-neutral run mirror (`seq`, run blocks, replay), history paging, shared types |
+| **Adapters** | `mod/src/adapters/<harness>/` | One per coding agent: `commandcode` (the `cmd` mod) and `claude-code` (experimental) |
+| **Mod** | `mod/src/adapters/commandcode/` | Hooks into `cmd`, streams events, reads JSONL v3 history, injects approvals into the TUI |
 | **Relay** | `workers/` | Serves the web app, routes `/agent` and `/ws`, tracks presence and pending interactions |
 | **Web UI** | `app/` | Session list, chat feed, prompt cards, composer, theme |
 
@@ -159,6 +162,31 @@ Transport injects keys into the Ink TUI rather than replacing the TUI's prompt. 
 
 Approvals are retried briefly because the TUI prompt may not be mounted at the exact moment the browser answers. If the terminal responds first, the pending web prompt is closed.
 
+## 🧪 Claude Code (experimental)
+
+The `claude-code` adapter mirrors a Claude Code session through the same relay and web UI. Sessions it opens are marked **experimental** in the sidebar and header.
+
+```bash
+npm run cc:build                                   # → dist/claude-code (a Claude Code plugin)
+TRANSPORT_TARGET=localhost:5173 claude --plugin-dir dist/claude-code
+```
+
+Inside a session, `/transport <host>` connects or switches the relay; the target and `agentId` persist in `$.state` across mod reloads. Claude Code's hooks runtime has no WebSocket, so the plugin spawns `bridge/bridge.mjs` (Node 22+) to hold the relay socket.
+
+How it differs from the Command Code mod:
+
+| | Command Code | Claude Code (experimental) |
+|---|---|---|
+| Live events | `cmd.on(...)` | `turn.step` stream, `tool.call`, `turn.start/complete` hooks |
+| History | Local JSONL v3 | `$.session.messages()` |
+| Permission from the web | stdin key injection | Terminal dialog and web card race; a web Allow re-issues the call with `$.tool.call`, a terminal Yes closes the web card |
+| Plan approval (`ExitPlanMode`) | From the web | Read-only on the web; answer in the terminal |
+| Permission mode | `permission_mode_changed` | Inferred from prompt-hint redraws and `$.tool.check` probes |
+| Thinking text | Always | Only with `showThinkingSummaries: true` |
+| Session title | `session_titled` | First prompt |
+
+Set `TRANSPORT_DEBUG_FILE=/path/to/log` to have the bridge append adapter decisions to a file.
+
 ## 🖥 Web UI
 
 The interface is a dashboard built with shadcn/ui:
@@ -189,7 +217,7 @@ npx shadcn@latest add dialog
 
 ```bash
 npm run dev          # Vite dev server + relay
-npm run typecheck    # wrangler types, route types, app + mod typecheck
+npm run typecheck    # wrangler types, route types, app + both adapters typecheck
 npm run build        # production build
 npm run preview      # preview the production build
 ```
@@ -203,7 +231,9 @@ NODE_ENV=development npm install --include=dev
 Project layout:
 
 ```text
-mod/src/                 mod source
+mod/src/core/            harness-neutral core
+mod/src/adapters/        commandcode and claude-code adapters
+mod/claude-code/         Claude Code plugin template (manifest, bridge)
 workers/protocol.ts      relay message types
 workers/durable.ts       Durable Object routing and presence
 workers/app.ts           Worker entry: /ws, /agent, React Router
@@ -211,7 +241,8 @@ app/                     React Router UI
 app/components/transport/  dashboard, chat, prompts, composer
 app/components/ui/       shadcn/ui primitives
 scripts/                 relay/mod/reload/switch checks and installer
-dist/transport.ts        built mod bundle (gitignored)
+dist/transport.ts        built Command Code mod (gitignored)
+dist/claude-code/        built Claude Code plugin (gitignored)
 ```
 
 ## 🧪 Testing
@@ -223,6 +254,7 @@ BASE=ws://localhost:5174 npm run test:relay
 BASE=ws://localhost:5174 npm run test:mod
 npm run test:reload
 npm run test:switch
+npm run test:claude-code
 ```
 
 | Command | Coverage |
@@ -231,6 +263,7 @@ npm run test:switch
 | `test:mod` | Builds the mod, loads it through jiti, checks event mapping, JSONL history, permission and question round-trips |
 | `test:reload` | State persistence and reconnect behavior across mod reloads |
 | `test:switch` | Host switching; remote switching runs only when `SECOND` is set |
+| `test:claude-code` | Builds the Claude Code plugin and runs `claude plugin validate` on it (needs the `claude` CLI) |
 
 ## ☁️ Deployment
 
@@ -253,6 +286,7 @@ The relay does not persist messages. The Durable Object keeps state in memory on
 - `ask_user_question` supports options and free text; the “discuss instead” path is not implemented.
 - The composer is disabled while the agent is busy. New prompts can be sent after the current run finishes.
 - The relay stores nothing, so sessions disappear when the socket drops and return after the agent reconnects.
+- Claude Code support is experimental: it depends on an early-access mod API, and its mode detection reads hint and verdict text that may change between Claude Code releases.
 
 ## 🧭 Troubleshooting
 
