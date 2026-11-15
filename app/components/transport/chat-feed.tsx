@@ -143,7 +143,7 @@ export function ChatFeed({
 										<EmptyDescription>
 											{hasSession
 												? "The first turn will appear here once the agent starts working."
-												: "Select a session in the sidebar, or run /transport <host> in Command Code."}
+												: "Select a session in the sidebar, or run /transport <host> in Command Code or Claude Code."}
 										</EmptyDescription>
 									</EmptyHeader>
 								</Empty>

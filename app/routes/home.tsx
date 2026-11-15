@@ -7,12 +7,13 @@ import { TransportHeader } from "~/components/transport/transport-header";
 import { Alert, AlertAction, AlertDescription, AlertTitle } from "~/components/ui/alert";
 import { Button } from "~/components/ui/button";
 import { SidebarInset, SidebarProvider } from "~/components/ui/sidebar";
+import { harnessLabel } from "~/lib/harness";
 import { useTransport } from "~/lib/transport-client";
 
 export function meta() {
 	return [
 		{ title: "transport" },
-		{ name: "description", content: "Remote for Command Code sessions" },
+		{ name: "description", content: "Remote for Command Code and Claude Code sessions" },
 	];
 }
 
@@ -79,6 +80,7 @@ export default function Home() {
 					disabled={!active}
 					busy={Boolean(active?.busy)}
 					skills={skills}
+					agentLabel={harnessLabel(active)}
 					onSend={sendPrompt}
 				/>
 			</SidebarInset>
