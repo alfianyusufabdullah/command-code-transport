@@ -380,7 +380,7 @@ function SidebarContent({
       )}
       {...props}
     >
-      <ScrollArea className="min-h-0 flex-1">
+      <ScrollArea className="min-h-0 flex-1" viewportClassName="[&>div]:block!">
         <div className="flex flex-col gap-0">{children}</div>
       </ScrollArea>
     </div>
