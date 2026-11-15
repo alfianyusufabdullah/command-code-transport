@@ -5,7 +5,7 @@
 	"scripts": {
 		"build": "react-router build",
 		"dev": "cross-env NODE_ENV=development react-router dev",
-		"typecheck": "wrangler types && react-router typegen && tsc -b && tsc -p mod",
+		"typecheck": "wrangler types && react-router typegen && tsc -b && tsc -p mod && tsc -p mod/tsconfig.claude-code.json",
 		"deploy": "npm run build && wrangler deploy",
 		"preview": "npm run build && vite preview",
 		"cf-typegen": "wrangler types",
@@ -15,7 +15,9 @@
 		"test:switch": "npm run mod:build && node scripts/switch-check.mts",
 		"mod:build": "esbuild mod/src/adapters/commandcode/index.ts --bundle --platform=node --format=esm --target=node22 --outfile=dist/transport.ts --log-level=warning",
 		"mod:install": "node scripts/install-mod.mjs",
-		"mod:update": "npm run mod:build && npm run mod:install"
+		"mod:update": "npm run mod:build && npm run mod:install",
+		"cc:build": "node scripts/build-claude-code.mjs",
+		"test:claude-code": "npm run cc:build && claude plugin validate dist/claude-code"
 	},
 	"dependencies": {
 		"@fontsource-variable/geist": "^5.3.0",
