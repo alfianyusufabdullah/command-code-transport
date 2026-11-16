@@ -519,6 +519,7 @@ export function useTransport() {
 
 	const selectSession = useCallback(
 		(agentId: string) => {
+			activeRef.current = agentId;
 			activeSessionRef.current =
 				sessionsRef.current.find((session) => session.agentId === agentId)?.sessionId ?? null;
 			dispatch({ type: "select", agentId });
