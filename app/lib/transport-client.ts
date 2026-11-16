@@ -419,15 +419,18 @@ export function useTransport() {
 					return;
 				}
 				case "update":
+					if (message.agentId !== activeRef.current) return;
 					dispatch({ type: "delta", message: message as unknown as UpdateMessage });
 					return;
 				case "replay":
+					if (message.agentId !== activeRef.current) return;
 					dispatch({
 						type: "snapshot",
 						updates: (message.updates ?? []) as SnapshotUpdate[],
 					});
 					return;
 				case "run_committed":
+					if (message.agentId !== activeRef.current) return;
 					dispatch({ type: "run_committed", runId: String(message.runId) });
 					refresh();
 					return;
@@ -448,6 +451,7 @@ export function useTransport() {
 					return;
 				}
 				case "gap":
+					if (message.agentId !== activeRef.current) return;
 					dispatch({
 						type: "notice",
 						notice: `${message.dropped} events were missed, reloading history.`,
@@ -515,6 +519,7 @@ export function useTransport() {
 
 	const selectSession = useCallback(
 		(agentId: string) => {
+			activeRef.current = agentId;
 			activeSessionRef.current =
 				sessionsRef.current.find((session) => session.agentId === agentId)?.sessionId ?? null;
 			dispatch({ type: "select", agentId });
